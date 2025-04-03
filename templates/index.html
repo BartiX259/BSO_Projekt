@@ -1,0 +1,27 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go + HTMX + Templates</title>
+    <!-- Link to the static CSS file -->
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Include the HTMX library -->
+    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
+</head>
+<body>
+    <h1>Go + HTMX Demo with Templates & CSS</h1>
+
+    <p>Click the button. HTMX fetches an HTML fragment rendered by a Go template.</p>
+
+    <button hx-get="/clicked" hx-target="#response-area" hx-swap="innerHTML">
+        Click Me for Templated Response!
+    </button>
+
+    <div id="response-area">
+        <p>Waiting for button click...</p>
+    </div>
+
+</body>
+</html>
