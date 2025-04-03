@@ -1,13 +1,12 @@
 // main.go
 package main
-
 import (
 	"fmt"
 	"log"
 	"net/http"
 
 	// Import the local src package using the module path + /src
-	"github.com/BartiX259/BSO_Projekt/src" // <-- Adjust "go-htmx-simple" if you used a different module path
+	"github.com/BartiX259/BSO_Projekt/src"
 )
 
 func main() {
