@@ -1,5 +1,27 @@
-<p>Response from server template! The time is: <strong>{{ .Timestamp }}</strong></p>
-<p>Bit sequence:</p>
-<pre style="word-wrap: break-word; white-space: pre-wrap;">{{ .BitSequence }}</pre>
-<p>Encoded sequence:</p>
-<pre style="word-wrap: break-word; white-space: pre-wrap;">{{ .EncodedSequence }}</pre>
+<div style="background: #fff; margin: 20px auto; max-width: 1200px; border-radius: 12px; box-shadow: 0 2px 16px rgba(0,0,0,0.1); padding: 20px;">
+    <h2 style="color: #333; margin: 0 0 20px 0; text-align: center;">Wyniki Symulacji</h2>
+    
+    <div style="margin-bottom: 20px;">
+        <h3>Oryginalna sekwencja bitów:</h3>
+        <pre style="word-wrap: break-word; white-space: pre-wrap; background: #f8f9fa; padding: 10px; border-radius: 4px;">{{ .BitSequence }}</pre>
+    </div>
+    
+    <div style="margin-bottom: 20px;">
+        <h3>Zakodowana sekwencja:</h3>
+        <pre style="word-wrap: break-word; white-space: pre-wrap; background: #f8f9fa; padding: 10px; border-radius: 4px;">{{ .EncodedSequence }}</pre>
+    </div>
+    
+    <div style="margin-bottom: 20px;">
+        <h3>Zdekodowana sekwencja:</h3>
+        <pre style="word-wrap: break-word; white-space: pre-wrap; background: #f8f9fa; padding: 10px; border-radius: 4px;">{{ .DecodedSequence }}</pre>
+    </div>
+    
+    <div style="margin-bottom: 20px;">
+        <h3>Współczynnik błędów bitowych (BER):</h3>
+        <p style="font-size: 1.2em; font-weight: bold; color: #28a745;">{{ .BER }}%</p>
+    </div>
+    
+    <div style="text-align: center; margin-top: 30px;">
+        <small style="color: #666;">Symulacja wykonana: {{ .Timestamp }}</small>
+    </div>
+</div>

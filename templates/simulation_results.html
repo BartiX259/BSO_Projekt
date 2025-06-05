@@ -1,0 +1,37 @@
+<div style="background: #fff; margin: 20px auto; max-width: 1200px; border-radius: 12px; box-shadow: 0 2px 16px rgba(0,0,0,0.1); padding: 20px;">
+    <h2 style="color: #333; margin: 0 0 20px 0; text-align: center;">Wyniki Symulacji</h2>
+    
+    {{if .GeneratorResult}}
+    <div style="margin-bottom: 20px;">
+        {{.GeneratorResult}}
+    </div>
+    {{end}}
+    
+    {{if .EncoderResult}}
+    <div style="margin-bottom: 20px;">
+        {{.EncoderResult}}
+    </div>
+    {{end}}
+    
+    {{if .ErrorResult}}
+    <div style="margin-bottom: 20px;">
+        {{.ErrorResult}}
+    </div>
+    {{end}}
+    
+    {{if .DecoderResult}}
+    <div style="margin-bottom: 20px;">
+        {{.DecoderResult}}
+    </div>
+    {{end}}
+    
+    {{if .BERResult}}
+    <div style="margin-bottom: 20px;">
+        {{.BERResult}}
+    </div>
+    {{end}}
+    
+    <div style="text-align: center; margin-top: 30px;">
+        <small style="color: #666;">Symulacja wykonana: {{.Timestamp}}</small>
+    </div>
+</div>

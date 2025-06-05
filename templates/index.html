@@ -1,25 +1,177 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Go + HTMX + Templates</title>
-    <!-- Link to the static CSS file -->
+    <title>BSO Projekt – Symulator Kodowania Gold</title>
     <link rel="stylesheet" href="/static/style.css">
-    <!-- Include the HTMX library -->
-    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10" crossorigin="anonymous"></script>
 </head>
 <body>
-    <h1>Go + HTMX Demo with Templates & CSS</h1>
-
-    <form hx-post="/simulate" hx-target="#response-area" hx-swap="innerHTML">
-        <label for="bitSequence">Enter a string (or leave empty for random):</label><br>
-        <input type="text" id="bitSequence" name="bitSequence" placeholder="e.g. hello"><br>
-        <button type="submit">Generate Bit Sequence</button>
+    <div class="main-title">BSO Projekt - Symulator Kodowania Gold</div>
+    <div class="subtitle">Konfiguracja Modułów</div>    <form id="sim-form">
+        <div class="modules-grid">
+            <div class="card">
+                <div class="card-header"><span class="icon">📋</span>Dane Wejściowe</div>
+                <div class="card-config">
+                    <label>Tekst do zakodowania:
+                        <input type="text" name="seqText" placeholder="np. hello world">
+                    </label>
+                    <label>Długość losowej sekwencji:
+                        <input type="number" name="seqLength" value="64" min="1" max="256">
+                    </label>
+                </div>
+                <div class="card-result" id="result-generator">(wynik pojawi się po uruchomieniu)</div>
+            </div>
+            <div class="card">
+                <div class="card-header"><span class="icon">🔑</span>Konfiguracja Kodu Gold</div>
+                <div class="card-config">
+                    <label>Długość rejestru (n):
+                        <input type="number" name="goldN" value="10" min="2" max="16">
+                    </label>                    <label>LFSR1 Taps (przecinek):
+                        <input type="text" name="goldTaps1" value="0,3">
+                    </label>
+                    <label>LFSR2 Taps (przecinek):
+                        <input type="text" name="goldTaps2" value="0,2,3,8">
+                    </label>
+                </div>
+                <div class="card-result" id="result-encoder">(wynik pojawi się po uruchomieniu)</div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <input type="checkbox" name="errorEnabled" checked> <span class="icon">⚡</span>Dodawanie Błędów
+                </div>
+                <div class="card-config">
+                    <label>Typ błędu:
+                        <select name="errorType">
+                            <option value="random">Losowy</option>
+                            <option value="burst">Seria (burst)</option>
+                        </select>
+                    </label>
+                    <label>Prawdopodobieństwo [%]:
+                        <input type="number" name="errorRate" value="5" min="0" max="100">
+                    </label>
+                </div>
+                <div class="card-result" id="result-error">(wynik pojawi się po uruchomieniu)</div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <input type="checkbox" name="decoderEnabled" checked> 
+                    <span class="icon">🔒</span>Dekoder
+                </div>
+                <div class="card-config">
+                    <label>Typ dekodera:
+                        <select name="decoderType">
+                            <option value="xor">Prosty XOR</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="card-result" id="result-decoder">(wynik pojawi się po uruchomieniu)</div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <input type="checkbox" name="berEnabled" checked> 
+                    <span class="icon">📊</span>Analiza BER
+                </div>
+                <div class="card-config">
+                    <span>Porównanie oryginału i wyjścia dekodera</span>
+                </div>
+                <div class="card-result" id="result-ber">(wynik pojawi się po uruchomieniu)</div>
+            </div>
+        </div>
+        <div class="actions">
+            <button type="button" class="btn-main" onclick="runSimulation()">Uruchom Symulację</button>
+            <button type="reset" class="btn-reset">Reset Konfiguracji</button>
+        </div>
     </form>
-
-    <div id="response-area">
-        <p>Waiting for bit sequence...</p>
-    </div>
+      <script>
+    async function runSimulation() {
+        const form = document.getElementById('sim-form');
+        const formData = new FormData(form);
+        
+        // Disable button during simulation
+        const btn = document.querySelector('.btn-main');
+        btn.disabled = true;
+        btn.textContent = 'Trwa symulacja...';
+        
+        // Clear all results
+        document.getElementById('result-generator').innerHTML = 'Generowanie...';
+        document.getElementById('result-encoder').innerHTML = 'Kodowanie...';
+        document.getElementById('result-error').innerHTML = 'Dodawanie błędów...';
+        document.getElementById('result-decoder').innerHTML = 'Dekodowanie...';
+        document.getElementById('result-ber').innerHTML = 'Analiza BER...';
+        
+        try {
+            // First, run the complete simulation to populate global results
+            const simulateResponse = await fetch('/simulate', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!simulateResponse.ok) {
+                throw new Error('Simulation failed');
+            }
+            
+            // Now call each module handler to get their specific results
+            
+            // 1. Generator
+            const generatorResponse = await fetch('/generator');
+            if (generatorResponse.ok) {
+                const generatorHtml = await generatorResponse.text();
+                document.getElementById('result-generator').innerHTML = generatorHtml;
+            }
+            
+            // 2. Encoder
+            const encoderResponse = await fetch('/encoder');
+            if (encoderResponse.ok) {
+                const encoderHtml = await encoderResponse.text();
+                document.getElementById('result-encoder').innerHTML = encoderHtml;
+            }
+            
+            // 3. Error (if enabled)
+            if (formData.get('errorEnabled') === 'on') {
+                const errorResponse = await fetch('/error');
+                if (errorResponse.ok) {
+                    const errorHtml = await errorResponse.text();
+                    document.getElementById('result-error').innerHTML = errorHtml;
+                }
+            } else {
+                document.getElementById('result-error').innerHTML = '<div class="result-item">Moduł wyłączony</div>';
+            }
+            
+            // 4. Decoder (if enabled)
+            if (formData.get('decoderEnabled') === 'on') {
+                const decoderResponse = await fetch('/decoder');
+                if (decoderResponse.ok) {
+                    const decoderHtml = await decoderResponse.text();
+                    document.getElementById('result-decoder').innerHTML = decoderHtml;
+                }
+            } else {
+                document.getElementById('result-decoder').innerHTML = '<div class="result-item">Moduł wyłączony</div>';
+            }
+            
+            // 5. BER (if enabled)
+            if (formData.get('berEnabled') === 'on') {
+                const berResponse = await fetch('/ber');
+                if (berResponse.ok) {
+                    const berHtml = await berResponse.text();
+                    document.getElementById('result-ber').innerHTML = berHtml;
+                }
+            } else {
+                document.getElementById('result-ber').innerHTML = '<div class="result-item">Moduł wyłączony</div>';
+            }
+            
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Błąd podczas symulacji: ' + error.message);
+        } finally {
+            // Re-enable button
+            btn.disabled = false;
+            btn.textContent = 'Uruchom Symulację';
+        }
+    }
+    </script>
+    <div id="results"></div>
 </body>
 </html>

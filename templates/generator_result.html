@@ -1,0 +1,13 @@
+<div class="module-result">
+    <div class="result-label">Generator ciągu - wynik:</div>
+    <div class="result-value">{{ .BitSequence }}</div>
+    {{if .InputText}}
+    <div style="margin-top: 8px; font-size: 0.9em; color: #666;">
+        Wejście: "{{ .InputText }}" ({{ .Length }} bitów)
+    </div>
+    {{else}}
+    <div style="margin-top: 8px; font-size: 0.9em; color: #666;">
+        Losowy ciąg ({{ .Length }} bitów)
+    </div>
+    {{end}}
+</div>
