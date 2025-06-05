@@ -1,4 +1,3 @@
-<!-- templates/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13,15 +12,14 @@
 <body>
     <h1>Go + HTMX Demo with Templates & CSS</h1>
 
-    <p>Click the button. HTMX fetches an HTML fragment rendered by a Go template.</p>
-
-    <button hx-get="/clicked" hx-target="#response-area" hx-swap="innerHTML">
-        Click Me for Templated Response!
-    </button>
+    <form hx-post="/clicked" hx-target="#response-area" hx-swap="innerHTML">
+        <label for="inputString">Enter a string (or leave empty for random):</label><br>
+        <input type="text" id="inputString" name="inputString" placeholder="e.g. hello"><br>
+        <button type="submit">Generate Bit Sequence</button>
+    </form>
 
     <div id="response-area">
-        <p>Waiting for button click...</p>
+        <p>Waiting for bit sequence...</p>
     </div>
-
 </body>
 </html>
