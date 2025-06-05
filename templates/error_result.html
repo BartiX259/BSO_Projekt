@@ -1,8 +1,9 @@
 <div class="module-result">
-    <div class="result-label">Ciąg z błędami:</div>
+    <div class="result-label">Ciąg z błędami - wynik:</div>
     <div class="result-value">{{ .CorruptedSequence }}</div>
     <div style="margin-top: 8px; font-size: 0.9em; color: #666;">
         Typ błędu: {{ .ErrorType }}, prawdopodobieństwo: {{ .ErrorRate }}%
+        <br>Długość: {{ len .CorruptedSequence }} bitów
     </div>
     <div style="margin-top: 4px; font-size: 0.9em;">
         <span class="error-count">Wprowadzono {{ .ErrorsIntroduced }} błędów</span>

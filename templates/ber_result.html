@@ -7,11 +7,27 @@
         Błędów wykrytych: {{ .ErrorsDetected }} z {{ .TotalBits }} bitów
     </div>
     {{if .OriginalSequence}}
-    <div class="result-label" style="margin-top: 12px;">Ciąg oryginalny:</div>
+    <div class="result-label" style="margin-top: 12px;">Ciąg oryginalny - wynik:</div>
     <div class="result-value">{{ .OriginalSequence }}</div>
+    {{if .OriginalASCII}}
+    <div style="margin-top: 4px; font-size: 0.98em; color: #374151;">
+        <strong>ASCII:</strong> {{ .OriginalASCII }}
+    </div>
+    {{end}}
+    <div style="margin-top: 4px; font-size: 0.9em; color: #666;">
+        Długość: {{ .TotalBits }} bitów
+    </div>
     {{end}}
     {{if .DecodedSequence}}
-    <div class="result-label" style="margin-top: 8px;">Ciąg zdekodowany:</div>
+    <div class="result-label" style="margin-top: 8px;">Ciąg zdekodowany - wynik:</div>
     <div class="result-value">{{ .DecodedSequence }}</div>
+    {{if .DecodedASCII}}
+    <div style="margin-top: 4px; font-size: 0.98em; color: #374151;">
+        <strong>ASCII:</strong> {{ .DecodedASCII }}
+    </div>
+    {{end}}
+    <div style="margin-top: 4px; font-size: 0.9em; color: #666;">
+        Długość: {{ .TotalBits }} bitów
+    </div>
     {{end}}
 </div>

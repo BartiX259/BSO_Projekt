@@ -75,6 +75,7 @@ type ErrorData struct {
 type DecoderData struct {
 	DecodedSequence string
 	DecoderType     string
+	DecodedASCII    string // NEW: ASCII representation
 }
 
 // BERData holds data for BER template
@@ -84,6 +85,8 @@ type BERData struct {
 	TotalBits        int
 	OriginalSequence string
 	DecodedSequence  string
+	OriginalASCII    string // NEW: ASCII representation of original
+	DecodedASCII     string // NEW: ASCII representation of decoded
 }
 
 // Serve the main HTML page using a template (Exported)
@@ -392,9 +395,17 @@ func DecoderHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	decodedBits := globalResults.Decoded.String()
+	ascii := ""
+	// Only show ASCII if input was text (not random)
+	if globalResults.InputText != "" {
+		ascii = bitsToASCII(decodedBits)
+	}
+
 	data := DecoderData{
-		DecodedSequence: globalResults.Decoded.String(),
-		DecoderType:     globalResults.DecoderType, // Use actual user parameter
+		DecodedSequence: decodedBits,
+		DecoderType:     globalResults.DecoderType,
+		DecodedASCII:    ascii,
 	}
 	globalResults.mutex.RUnlock()
 
@@ -425,12 +436,25 @@ func BERHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	origBits := globalResults.Original.String()
+	decBits := globalResults.Decoded.String()
+
+	origASCII := ""
+	decASCII := ""
+	// Only show ASCII if input was text (not random)
+	if globalResults.InputText != "" {
+		origASCII = bitsToASCII(origBits)
+		decASCII = bitsToASCII(decBits)
+	}
+
 	data := BERData{
 		BER:              fmt.Sprintf("%.2f", globalResults.BER*100),
 		ErrorsDetected:   globalResults.ErrorCount,
 		TotalBits:        globalResults.Original.Len(),
-		OriginalSequence: globalResults.Original.String(),
-		DecodedSequence:  globalResults.Decoded.String(),
+		OriginalSequence: origBits,
+		DecodedSequence:  decBits,
+		OriginalASCII:    origASCII,
+		DecodedASCII:     decASCII,
 	}
 	globalResults.mutex.RUnlock()
 
@@ -462,4 +486,24 @@ func parseTaps(tapsStr string) []uint {
 	}
 
 	return taps
+}
+
+// bitsToASCII converts a string of '0' and '1' to ASCII if length is a multiple of 8
+func bitsToASCII(bits string) string {
+	if len(bits)%8 != 0 || len(bits) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for i := 0; i < len(bits); i += 8 {
+		byteStr := bits[i : i+8]
+		var b byte
+		for j := 0; j < 8; j++ {
+			b <<= 1
+			if byteStr[j] == '1' {
+				b |= 1
+			}
+		}
+		sb.WriteByte(b)
+	}
+	return sb.String()
 }

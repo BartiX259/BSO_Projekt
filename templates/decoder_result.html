@@ -1,7 +1,13 @@
 <div class="module-result">
-    <div class="result-label">Zdekodowany ciąg:</div>
+    <div class="result-label">Ciąg zdekodowany - wynik:</div>
     <div class="result-value">{{ .DecodedSequence }}</div>
+    {{if .DecodedASCII}}
+    <div style="margin-top: 6px; font-size: 0.98em; color: #374151;">
+        <strong>ASCII:</strong> {{ .DecodedASCII }}
+    </div>
+    {{end}}
     <div style="margin-top: 8px; font-size: 0.9em; color: #666;">
-        Typ dekodera: {{ .DecoderType }}
+        Typ dekodera: {{ .DecoderType }}<br>
+        Długość: {{ len .DecodedSequence }} bitów
     </div>
 </div>
