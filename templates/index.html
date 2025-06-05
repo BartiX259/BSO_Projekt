@@ -16,7 +16,7 @@
           hx-target="#simulation-status"
           hx-swap="innerHTML">
         <div class="modules-grid">
-            <div class="card">
+            <div class="card" id="card-generator">
                 <div class="card-header"><span class="icon">📋</span>Dane Wejściowe</div>
                 <div class="card-config">
                     <label>Tekst do zakodowania:
@@ -28,7 +28,7 @@
                 </div>
                 <div class="card-result" id="result-generator">(wynik pojawi się po uruchomieniu)</div>
             </div>
-            <div class="card">
+            <div class="card" id="card-encoder">
                 <div class="card-header"><span class="icon">🔑</span>Konfiguracja Kodu Gold</div>
                 <div class="card-config">
                     <label>Długość rejestru (n):
@@ -42,7 +42,7 @@
                 </div>
                 <div class="card-result" id="result-encoder">(wynik pojawi się po uruchomieniu)</div>
             </div>
-            <div class="card">
+            <div class="card" id="card-error">
                 <div class="card-header">
                     <input type="checkbox" name="errorEnabled" checked> <span class="icon">⚡</span>Dodawanie Błędów
                 </div>
@@ -59,7 +59,7 @@
                 </div>
                 <div class="card-result" id="result-error">(wynik pojawi się po uruchomieniu)</div>
             </div>
-            <div class="card">
+            <div class="card" id="card-decoder">
                 <div class="card-header">
                     <input type="checkbox" name="decoderEnabled" checked> 
                     <span class="icon">🔒</span>Dekoder
@@ -74,7 +74,7 @@
                 <div class="card-result" id="result-decoder">(wynik pojawi się po uruchomieniu)</div>
             </div>
             
-            <div class="card">
+            <div class="card" id="card-ber">
                 <div class="card-header">
                     <input type="checkbox" name="berEnabled" checked> 
                     <span class="icon">📊</span>Analiza BER
@@ -94,35 +94,96 @@
     <div id="simulation-status"></div>
     
     <script>
+    // Helper to set innerHTML with fade-in animation
+    function setCardResultFadeIn(id, html) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        // Remove and force reflow to restart animation even if same content
+        el.classList.remove('fade-in');
+        el.style.opacity = '0';
+        // Use requestAnimationFrame for reliable reflow
+        requestAnimationFrame(() => {
+            el.innerHTML = html;
+            void el.offsetWidth;
+            el.classList.add('fade-in');
+            // After animation, ensure opacity is 1 and remove the class
+            setTimeout(() => {
+                el.classList.remove('fade-in');
+                el.style.opacity = '1';
+            }, 700); // match CSS animation duration (0.65s + buffer)
+        });
+
+        // Expand card if not placeholder
+        let cardId = null;
+        if (id === 'result-generator') cardId = 'card-generator';
+        if (id === 'result-encoder') cardId = 'card-encoder';
+        if (id === 'result-error') cardId = 'card-error';
+        if (id === 'result-decoder') cardId = 'card-decoder';
+        if (id === 'result-ber') cardId = 'card-ber';
+
+        if (cardId) {
+            // If html contains "(wynik pojawi się po uruchomieniu)" or "Moduł wyłączony", collapse
+            if (
+                html.includes('(wynik pojawi się po uruchomieniu)') ||
+                html.includes('Moduł wyłączony') ||
+                html.includes('Generowanie...') ||
+                html.includes('Kodowanie...') ||
+                html.includes('Dodawanie błędów...') ||
+                html.includes('Dekodowanie...') ||
+                html.includes('Analiza BER...')
+            ) {
+                setCardExpanded(cardId, false);
+            } else {
+                setCardExpanded(cardId, true);
+            }
+        }
+    }
+
+    // Helper to expand/collapse card smoothly
+    function setCardExpanded(cardId, expanded) {
+        const card = document.getElementById(cardId);
+        if (!card) return;
+        if (expanded) {
+            card.classList.add('expanded');
+        } else {
+            card.classList.remove('expanded');
+        }
+    }
+
     // Add event listeners for HTMX events
     document.addEventListener('htmx:beforeRequest', function(evt) {
-        if (evt.detail.elt.id === 'sim-form') {
-            console.log('Starting simulation...');
-            document.getElementById('result-generator').innerHTML = 'Generowanie...';
-            document.getElementById('result-encoder').innerHTML = 'Kodowanie...';
-            document.getElementById('result-error').innerHTML = 'Dodawanie błędów...';
-            document.getElementById('result-decoder').innerHTML = 'Dekodowanie...';
-            document.getElementById('result-ber').innerHTML = 'Analiza BER...';
-            
+        // Check if the event is for the simulation form
+        if (evt.detail.elt && evt.detail.elt.id === 'sim-form') {
+            // Clear simulation status
+            document.getElementById('simulation-status').innerHTML = '';
+            setCardResultFadeIn('result-generator', 'Generowanie...');
+            setCardResultFadeIn('result-encoder', 'Kodowanie...');
+            setCardResultFadeIn('result-error', 'Dodawanie błędów...');
+            setCardResultFadeIn('result-decoder', 'Dekodowanie...');
+            setCardResultFadeIn('result-ber', 'Analiza BER...');
+            // Disable submit button
             const btn = document.querySelector('button[type="submit"]');
-            btn.disabled = true;
-            btn.textContent = 'Trwa symulacja...';
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Trwa symulacja...';
+            }
         }
     });
-    
+
     document.addEventListener('htmx:afterRequest', function(evt) {
-        if (evt.detail.elt.id === 'sim-form') {
-            console.log('Simulation completed, loading module results...');
+        if (evt.detail.elt && evt.detail.elt.id === 'sim-form') {
+            // Enable submit button
             const btn = document.querySelector('button[type="submit"]');
-            btn.disabled = false;
-            btn.textContent = 'Uruchom Symulację';
-            
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Uruchom Symulację';
+            }
             // Check if simulation was successful (status 200)
-            if (evt.detail.xhr.status === 200) {
-                // Add a small delay to ensure the backend has finished storing results
+            if (evt.detail.xhr && evt.detail.xhr.status === 200) {
                 setTimeout(loadModuleResults, 100);
             } else {
-                console.error('Simulation failed with status:', evt.detail.xhr.status);
+                // Show error in simulation status
+                document.getElementById('simulation-status').innerHTML = '<div class="error">Błąd symulacji (status ' + evt.detail.xhr.status + ')</div>';
             }
         }
     });
@@ -135,22 +196,22 @@
             const generatorResponse = await fetch('/generator');
             if (generatorResponse.ok) {
                 const generatorHtml = await generatorResponse.text();
-                document.getElementById('result-generator').innerHTML = generatorHtml;
+                setCardResultFadeIn('result-generator', generatorHtml);
                 console.log('Generator result loaded');
             } else {
                 console.error('Generator request failed:', generatorResponse.status);
-                document.getElementById('result-generator').innerHTML = '<div class="error">Błąd ładowania generatora</div>';
+                setCardResultFadeIn('result-generator', '<div class="error">Błąd ładowania generatora</div>');
             }
             
             // 2. Encoder - always load
             const encoderResponse = await fetch('/encoder');
             if (encoderResponse.ok) {
                 const encoderHtml = await encoderResponse.text();
-                document.getElementById('result-encoder').innerHTML = encoderHtml;
+                setCardResultFadeIn('result-encoder', encoderHtml);
                 console.log('Encoder result loaded');
             } else {
                 console.error('Encoder request failed:', encoderResponse.status);
-                document.getElementById('result-encoder').innerHTML = '<div class="error">Błąd ładowania kodera</div>';
+                setCardResultFadeIn('result-encoder', '<div class="error">Błąd ładowania kodera</div>');
             }
             
             // 3. Error module
@@ -160,14 +221,14 @@
                 const errorResponse = await fetch('/error');
                 if (errorResponse.ok) {
                     const errorHtml = await errorResponse.text();
-                    document.getElementById('result-error').innerHTML = errorHtml;
+                    setCardResultFadeIn('result-error', errorHtml);
                     console.log('Error result loaded');
                 } else {
                     console.error('Error request failed:', errorResponse.status);
-                    document.getElementById('result-error').innerHTML = '<div class="error">Błąd ładowania modułu błędów</div>';
+                    setCardResultFadeIn('result-error', '<div class="error">Błąd ładowania modułu błędów</div>');
                 }
             } else {
-                document.getElementById('result-error').innerHTML = '<div class="result-item">Moduł wyłączony</div>';
+                setCardResultFadeIn('result-error', '<div class="result-item">Moduł wyłączony</div>');
             }
             
             // 4. Decoder module
@@ -177,14 +238,14 @@
                 const decoderResponse = await fetch('/decoder');
                 if (decoderResponse.ok) {
                     const decoderHtml = await decoderResponse.text();
-                    document.getElementById('result-decoder').innerHTML = decoderHtml;
+                    setCardResultFadeIn('result-decoder', decoderHtml);
                     console.log('Decoder result loaded');
                 } else {
                     console.error('Decoder request failed:', decoderResponse.status);
-                    document.getElementById('result-decoder').innerHTML = '<div class="error">Błąd ładowania dekodera</div>';
+                    setCardResultFadeIn('result-decoder', '<div class="error">Błąd ładowania dekodera</div>');
                 }
             } else {
-                document.getElementById('result-decoder').innerHTML = '<div class="result-item">Moduł wyłączony</div>';
+                setCardResultFadeIn('result-decoder', '<div class="result-item">Moduł wyłączony</div>');
             }
             
             // 5. BER module
@@ -194,14 +255,14 @@
                 const berResponse = await fetch('/ber');
                 if (berResponse.ok) {
                     const berHtml = await berResponse.text();
-                    document.getElementById('result-ber').innerHTML = berHtml;
+                    setCardResultFadeIn('result-ber', berHtml);
                     console.log('BER result loaded');
                 } else {
                     console.error('BER request failed:', berResponse.status);
-                    document.getElementById('result-ber').innerHTML = '<div class="error">Błąd ładowania analizy BER</div>';
+                    setCardResultFadeIn('result-ber', '<div class="error">Błąd ładowania analizy BER</div>');
                 }
             } else {
-                document.getElementById('result-ber').innerHTML = '<div class="result-item">Moduł wyłączony</div>';
+                setCardResultFadeIn('result-ber', '<div class="result-item">Moduł wyłączony</div>');
             }
             
         } catch (error) {
