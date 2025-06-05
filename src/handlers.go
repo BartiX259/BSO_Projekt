@@ -14,6 +14,7 @@ type ResponseData struct {
 	Timestamp   	string
 	BitSequence 	string
 	EncodedSequence	string
+	DecodedSequence string
 }
 
 // Serve the main HTML page using a template (Exported)
@@ -47,20 +48,25 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	n := 10
-	taps1 := []uint{2, 9}   // For example: bits 3 and 10
-	taps2 := []uint{2, 3, 6, 8, 9} // More complex second LFSR
-	seed1 := uint64(0b1000000001) // any non-zero 10-bit value
-	seed2 := uint64(0b1101011101)
+	// Preferred pair for n=10:
+	// P1(x) = x^10 + x^3 + 1
+	taps1 := []uint{0, 3}
+	// P2(x) = x^10 + x^8 + x^3 + x^2 + 1
+	taps2 := []uint{0, 2, 3, 8}
+	seed1 := uint64(0b1) // first seed should be 1
+	seed2 := uint64(0b1010101010) // Any 10 bit value
 
 	goldCode := simulation.GenerateGoldCode(uint(n), taps1, seed1, taps2, seed2)
 	log.Printf("gold code: %s", goldCode.String())
 	encoded := simulation.EncodeWithGold(*bitSeq, *goldCode)
 	log.Printf("encoded: %s", encoded.String())
+	decoded := simulation.DecodeWithGold(*encoded, *goldCode)
 
 	data := ResponseData{
 		Timestamp:   time.Now().Format(time.RFC1123),
 		BitSequence: bitSeq.String(),
 		EncodedSequence: encoded.String(),
+		DecodedSequence: decoded.String(),
 	}
 
 	tmpl, err := template.ParseFiles("templates/response.html")
