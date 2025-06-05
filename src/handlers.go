@@ -9,13 +9,14 @@ import (
 	"github.com/BartiX259/BSO_Projekt/src/simulation"
 )
 
-// ResponseData holds data for the response template (Exported)
+// ResponseData holds data for the response template
 type ResponseData struct {
-	Timestamp   string
-	BitSequence string
+	Timestamp   	string
+	BitSequence 	string
+	EncodedSequence	string
 }
 
-// IndexHandler serves the main HTML page using a template (Exported)
+// Serve the main HTML page using a template (Exported)
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl, err := template.ParseFiles("templates/index.html") // Path relative to execution dir
 	if err != nil {
@@ -30,24 +31,36 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ClickedHandler handles the form
-func ClickedHandler(w http.ResponseWriter, r *http.Request) {
+// Handle the simulation endpoint
+func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Form parse error", http.StatusBadRequest)
 		return
 	}
 
-	input := r.FormValue("inputString")
-	var bitSeq string
-	if input != "" {
-		bitSeq = simulation.StringAsSequence(input).String()
+	formBitSequence := r.FormValue("bitSequence")
+	var bitSeq *simulation.BitSequence
+	if formBitSequence != "" {
+		bitSeq = simulation.StringAsSequence(formBitSequence)
 	} else {
-		bitSeq = simulation.RandomSequence(64).String()
+		bitSeq = simulation.RandomSequence(64)
 	}
+
+	n := 10
+	taps1 := []uint{2, 9}   // For example: bits 3 and 10
+	taps2 := []uint{2, 3, 6, 8, 9} // More complex second LFSR
+	seed1 := uint64(0b1000000001) // any non-zero 10-bit value
+	seed2 := uint64(0b1101011101)
+
+	goldCode := simulation.GenerateGoldCode(uint(n), taps1, seed1, taps2, seed2)
+	log.Printf("gold code: %s", goldCode.String())
+	encoded := simulation.EncodeWithGold(*bitSeq, *goldCode)
+	log.Printf("encoded: %s", encoded.String())
 
 	data := ResponseData{
 		Timestamp:   time.Now().Format(time.RFC1123),
-		BitSequence: bitSeq,
+		BitSequence: bitSeq.String(),
+		EncodedSequence: encoded.String(),
 	}
 
 	tmpl, err := template.ParseFiles("templates/response.html")

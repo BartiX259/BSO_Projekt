@@ -1,11 +1,11 @@
-// main.go
 package main
+
 import (
 	"fmt"
 	"log"
 	"net/http"
 
-	// Import the local src package using the module path + /src
+	// Import the local src package
 	"github.com/BartiX259/BSO_Projekt/src"
 )
 
@@ -15,9 +15,9 @@ func main() {
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 	log.Println("Serving static files from ./static/ directory under /static/ path")
 
-	// --- Page Handlers (using handlers from the 'src' package) ---
-	http.HandleFunc("/", src.IndexHandler)       // Use src.IndexHandler
-	http.HandleFunc("/clicked", src.ClickedHandler) // Use src.ClickedHandler
+	// --- Page Handlers ---
+	http.HandleFunc("/", src.IndexHandler)
+	http.HandleFunc("/simulate", src.SimulateHandler)
 
 	// --- Start Server ---
 	port := ":8080"

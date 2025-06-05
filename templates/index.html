@@ -12,9 +12,9 @@
 <body>
     <h1>Go + HTMX Demo with Templates & CSS</h1>
 
-    <form hx-post="/clicked" hx-target="#response-area" hx-swap="innerHTML">
-        <label for="inputString">Enter a string (or leave empty for random):</label><br>
-        <input type="text" id="inputString" name="inputString" placeholder="e.g. hello"><br>
+    <form hx-post="/simulate" hx-target="#response-area" hx-swap="innerHTML">
+        <label for="bitSequence">Enter a string (or leave empty for random):</label><br>
+        <input type="text" id="bitSequence" name="bitSequence" placeholder="e.g. hello"><br>
         <button type="submit">Generate Bit Sequence</button>
     </form>
 
