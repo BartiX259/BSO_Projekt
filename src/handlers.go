@@ -2,30 +2,36 @@ package src
 
 import (
 	"fmt"
-	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+
 	"github.com/BartiX259/BSO_Projekt/src/simulation"
 )
 
 // Global simulation results storage
 type SimulationResults struct {
-	Original    *simulation.BitSequence
-	GoldCode    *simulation.BitSequence
-	Encoded     *simulation.BitSequence
-	Corrupted   *simulation.BitSequence
-	Decoded     *simulation.BitSequence
-	BER         float32
-	ErrorCount  int
-	InputText   string
-	ErrorType   string
-	ErrorRate   float64
+	Original         *simulation.BitSequence
+	GoldCode         *simulation.BitSequence
+	Encoded          *simulation.BitSequence
+	Corrupted        *simulation.BitSequence
+	Decoded          *simulation.BitSequence
+	BER              float32
+	ErrorCount       int
+	InputText        string
+	ErrorType        string
+	ErrorRate        float64
 	ErrorsIntroduced int
-	Timestamp   string
+	Timestamp        string
+	// Add user parameters
+	GoldN       int
+	GoldTaps1   []uint
+	GoldTaps2   []uint
+	DecoderType string
 	mutex       sync.RWMutex
 }
 
@@ -33,11 +39,11 @@ var globalResults = &SimulationResults{}
 
 // ResponseData holds data for the response template
 type ResponseData struct {
-	Timestamp   	string
-	BitSequence 	string
-	EncodedSequence	string
+	Timestamp       string
+	BitSequence     string
+	EncodedSequence string
 	DecodedSequence string
-	BER				string
+	BER             string
 }
 
 // GeneratorData holds data for generator template
@@ -53,14 +59,16 @@ type EncoderData struct {
 	EncodedSequence string
 	N               int
 	Length          int
+	Taps1           []uint
+	Taps2           []uint
 }
 
 // ErrorData holds data for error template
 type ErrorData struct {
-	CorruptedSequence  string
-	ErrorType          string
-	ErrorRate          float64
-	ErrorsIntroduced   int
+	CorruptedSequence string
+	ErrorType         string
+	ErrorRate         float64
+	ErrorsIntroduced  int
 }
 
 // DecoderData holds data for decoder template
@@ -96,20 +104,41 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 // Handle the simulation endpoint - runs complete simulation pipeline and stores results globally
 func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
+		log.Printf("Form parse error: %v", err)
 		http.Error(w, "Form parse error", http.StatusBadRequest)
 		return
 	}
 
-	// Parse form data
-	seqText := r.FormValue("seqText")
-	seqLengthStr := r.FormValue("seqLength")
-	errorRateStr := r.FormValue("errorRate")
-	errorType := r.FormValue("errorType")
-	
+	// Debug logging - log all received form values
+	log.Printf("=== Form Values Received ===")
+	log.Printf("Request Method: %s", r.Method)
+	log.Printf("Content-Type: %s", r.Header.Get("Content-Type"))
+
+	// Parse form data with better error handling
+	seqText := strings.TrimSpace(r.FormValue("seqText"))
+	seqLengthStr := strings.TrimSpace(r.FormValue("seqLength"))
+	errorRateStr := strings.TrimSpace(r.FormValue("errorRate"))
+	errorType := strings.TrimSpace(r.FormValue("errorType"))
+	goldNStr := strings.TrimSpace(r.FormValue("goldN"))
+	goldTaps1Str := strings.TrimSpace(r.FormValue("goldTaps1"))
+	goldTaps2Str := strings.TrimSpace(r.FormValue("goldTaps2"))
+	decoderType := strings.TrimSpace(r.FormValue("decoderType"))
+
+	log.Printf("seqText: '%s'", seqText)
+	log.Printf("seqLength: '%s'", seqLengthStr)
+	log.Printf("errorRate: '%s'", errorRateStr)
+	log.Printf("errorType: '%s'", errorType)
+	log.Printf("goldN: '%s'", goldNStr)
+	log.Printf("goldTaps1: '%s'", goldTaps1Str)
+	log.Printf("goldTaps2: '%s'", goldTaps2Str)
+	log.Printf("decoderType: '%s'", decoderType)
+	log.Printf("=== End Form Values ===")
+
 	// Generate or parse bit sequence
 	var bitSeq *simulation.BitSequence
 	if seqText != "" {
 		bitSeq = simulation.StringAsSequence(seqText)
+		log.Printf("Using text input: '%s'", seqText)
 	} else {
 		seqLength := 64
 		if seqLengthStr != "" {
@@ -118,34 +147,74 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		bitSeq = simulation.RandomSequence(seqLength)
+		log.Printf("Generated random sequence of length: %d", seqLength)
 	}
 
-	// Parse error parameters
+	// Parse Gold code parameters with defaults
+	n := 10
+	if goldNStr != "" {
+		if parsed, err := strconv.Atoi(goldNStr); err == nil && parsed >= 2 && parsed <= 16 {
+			n = parsed
+		}
+	}
+	log.Printf("Using Gold N: %d", n)
+
+	// Parse taps for LFSR1
+	taps1 := []uint{0, 3} // default
+	if goldTaps1Str != "" {
+		if parsed := parseTaps(goldTaps1Str); len(parsed) > 0 {
+			taps1 = parsed
+		}
+	}
+	log.Printf("Using LFSR1 taps: %v", taps1)
+
+	// Parse taps for LFSR2
+	taps2 := []uint{0, 2, 3, 8} // default
+	if goldTaps2Str != "" {
+		if parsed := parseTaps(goldTaps2Str); len(parsed) > 0 {
+			taps2 = parsed
+		}
+	}
+	log.Printf("Using LFSR2 taps: %v", taps2)
+
+	// Parse error parameters with better validation
 	errorRate := 5.0
 	if errorRateStr != "" {
 		if parsed, err := strconv.ParseFloat(errorRateStr, 64); err == nil && parsed >= 0 && parsed <= 100 {
 			errorRate = parsed
+		} else {
+			log.Printf("Error parsing errorRate '%s': %v, using default 5.0", errorRateStr, err)
 		}
 	}
-	
+	log.Printf("Using error rate: %.2f%%", errorRate)
+
 	if errorType == "" {
 		errorType = "random"
 	}
+	log.Printf("Using error type: %s", errorType)
 
-	// Generate Gold code
-	n := 10
-	taps1 := []uint{0, 3}
-	taps2 := []uint{0, 2, 3, 8}
+	if decoderType == "" {
+		decoderType = "xor"
+	}
+	log.Printf("Using decoder type: %s", decoderType)
+
+	// Generate Gold code with user parameters
 	seed1 := uint64(1)
 	seed2 := uint64(0b1010101010)
 	goldCode := simulation.GenerateGoldCode(uint(n), taps1, seed1, taps2, seed2)
-	
+
 	// Run complete simulation pipeline
 	encoded := simulation.EncodeWithGold(*bitSeq, *goldCode)
-	corrupted, errorsIntroduced := simulation.AddErrors(encoded, errorRate, errorType)
+	log.Printf("Encoded sequence length: %d", encoded.Len())
+
+	// Convert error rate from percentage to decimal for the function
+	errorRateDecimal := errorRate / 100.0
+	corrupted, errorsIntroduced := simulation.AddErrors(encoded, errorRateDecimal, errorType)
+	log.Printf("Errors introduced: %d (rate: %.4f)", errorsIntroduced, errorRateDecimal)
+
 	decoded := simulation.DecodeWithGold(*corrupted, *goldCode)
 	ber := simulation.CalculateBER(*bitSeq, *decoded)
-	
+
 	// Count errors for display
 	errorCount := 0
 	for i := range bitSeq.Len() {
@@ -168,42 +237,35 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	globalResults.ErrorRate = errorRate
 	globalResults.ErrorsIntroduced = errorsIntroduced
 	globalResults.Timestamp = time.Now().Format(time.RFC1123)
+	// Store user parameters
+	globalResults.GoldN = n
+	globalResults.GoldTaps1 = taps1
+	globalResults.GoldTaps2 = taps2
+	globalResults.DecoderType = decoderType
 	globalResults.mutex.Unlock()
 
-	// Prepare response data
-	data := ResponseData{
-		Timestamp:       globalResults.Timestamp,
-		BitSequence:     bitSeq.String(),
-		EncodedSequence: encoded.String(),
-		DecodedSequence: decoded.String(),
-		BER:            fmt.Sprintf("%.2f", ber*100),
-	}
-
-	tmpl, err := template.ParseFiles("templates/response.html")
-	if err != nil {
-		log.Printf("Error parsing response template: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
+	// Return simple success response for HTMX
 	w.Header().Set("Content-Type", "text/html")
-	if err := tmpl.Execute(w, data); err != nil {
-		log.Printf("Error executing response template: %v", err)
-	}
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `<div class="success-message">Symulacja zakończona pomyślnie! Czas: %s</div>`,
+		time.Now().Format("15:04:05"))
 }
 
 // GeneratorHandler returns stored bit sequence generation results
 func GeneratorHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("GeneratorHandler called")
+
 	// Get stored results from global state
 	globalResults.mutex.RLock()
-	
+
 	// Check if we have stored results
 	if globalResults.Original == nil {
 		globalResults.mutex.RUnlock()
+		log.Printf("GeneratorHandler: No original sequence available")
 		http.Error(w, "No simulation results available. Please run complete simulation first.", http.StatusBadRequest)
 		return
 	}
-	
+
 	data := GeneratorData{
 		BitSequence: globalResults.Original.String(),
 		InputText:   globalResults.InputText,
@@ -211,26 +273,37 @@ func GeneratorHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	globalResults.mutex.RUnlock()
 
+	log.Printf("GeneratorHandler: Returning data - Length: %d, InputText: '%s', BitSequence preview: '%.20s...'",
+		data.Length, data.InputText, data.BitSequence)
+
 	tmpl, err := template.ParseFiles("templates/generator_result.html")
 	if err != nil {
+		log.Printf("GeneratorHandler: Template error: %v", err)
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Cache-Control", "no-cache")
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("Error executing generator template: %v", err)
+		http.Error(w, "Template execution error", http.StatusInternalServerError)
+	} else {
+		log.Printf("GeneratorHandler: Template executed successfully")
 	}
 }
 
 // EncoderHandler returns stored Gold code generation and encoding results
 func EncoderHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("EncoderHandler called")
+
 	// Get stored results from global state
 	globalResults.mutex.RLock()
-	
+
 	// Check if we have stored results
 	if globalResults.GoldCode == nil || globalResults.Encoded == nil {
 		globalResults.mutex.RUnlock()
+		log.Printf("EncoderHandler: No gold code or encoded sequence available")
 		http.Error(w, "No simulation results available. Please run complete simulation first.", http.StatusBadRequest)
 		return
 	}
@@ -238,31 +311,44 @@ func EncoderHandler(w http.ResponseWriter, r *http.Request) {
 	data := EncoderData{
 		GoldCode:        globalResults.GoldCode.String(),
 		EncodedSequence: globalResults.Encoded.String(),
-		N:               10, // Fixed value as used in simulation
+		N:               globalResults.GoldN, // Use actual user parameter
 		Length:          globalResults.GoldCode.Len(),
+		Taps1:           globalResults.GoldTaps1,
+		Taps2:           globalResults.GoldTaps2,
 	}
 	globalResults.mutex.RUnlock()
 
+	log.Printf("EncoderHandler: Returning data - N: %d, Length: %d, Taps1: %v, Taps2: %v",
+		data.N, data.Length, data.Taps1, data.Taps2)
+
 	tmpl, err := template.ParseFiles("templates/encoder_result.html")
 	if err != nil {
+		log.Printf("EncoderHandler: Template error: %v", err)
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Cache-Control", "no-cache")
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("Error executing encoder template: %v", err)
+		http.Error(w, "Template execution error", http.StatusInternalServerError)
+	} else {
+		log.Printf("EncoderHandler: Template executed successfully")
 	}
 }
 
 // ErrorHandler returns stored error injection results
 func ErrorHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("ErrorHandler called")
+
 	// Get stored results from global state
 	globalResults.mutex.RLock()
-	
+
 	// Check if we have stored results
 	if globalResults.Corrupted == nil {
 		globalResults.mutex.RUnlock()
+		log.Printf("ErrorHandler: No corrupted sequence available")
 		http.Error(w, "No simulation results available. Please run complete simulation first.", http.StatusBadRequest)
 		return
 	}
@@ -275,8 +361,12 @@ func ErrorHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	globalResults.mutex.RUnlock()
 
+	log.Printf("ErrorHandler: Returning data - ErrorType: %s, ErrorRate: %.2f, ErrorsIntroduced: %d",
+		data.ErrorType, data.ErrorRate, data.ErrorsIntroduced)
+
 	tmpl, err := template.ParseFiles("templates/error_result.html")
 	if err != nil {
+		log.Printf("ErrorHandler: Template error: %v", err)
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return
 	}
@@ -289,24 +379,30 @@ func ErrorHandler(w http.ResponseWriter, r *http.Request) {
 
 // DecoderHandler returns stored decoding results
 func DecoderHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("DecoderHandler called")
+
 	// Get stored results from global state
 	globalResults.mutex.RLock()
-	
+
 	// Check if we have stored results
 	if globalResults.Decoded == nil {
 		globalResults.mutex.RUnlock()
+		log.Printf("DecoderHandler: No decoded sequence available")
 		http.Error(w, "No simulation results available. Please run complete simulation first.", http.StatusBadRequest)
 		return
 	}
-	
+
 	data := DecoderData{
 		DecodedSequence: globalResults.Decoded.String(),
-		DecoderType:     "xor",
+		DecoderType:     globalResults.DecoderType, // Use actual user parameter
 	}
 	globalResults.mutex.RUnlock()
 
+	log.Printf("DecoderHandler: Returning data - DecoderType: %s", data.DecoderType)
+
 	tmpl, err := template.ParseFiles("templates/decoder_result.html")
 	if err != nil {
+		log.Printf("DecoderHandler: Template error: %v", err)
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return
 	}
@@ -321,7 +417,7 @@ func DecoderHandler(w http.ResponseWriter, r *http.Request) {
 func BERHandler(w http.ResponseWriter, r *http.Request) {
 	// Get stored results from global state
 	globalResults.mutex.RLock()
-	
+
 	// Check if we have stored results
 	if globalResults.Original == nil || globalResults.Decoded == nil {
 		globalResults.mutex.RUnlock()
@@ -347,4 +443,23 @@ func BERHandler(w http.ResponseWriter, r *http.Request) {
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("Error executing BER template: %v", err)
 	}
+}
+
+// Helper function to parse comma-separated taps
+func parseTaps(tapsStr string) []uint {
+	if tapsStr == "" {
+		return nil
+	}
+
+	parts := strings.Split(tapsStr, ",")
+	taps := make([]uint, 0, len(parts))
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if tap, err := strconv.Atoi(part); err == nil && tap >= 0 {
+			taps = append(taps, uint(tap))
+		}
+	}
+
+	return taps
 }

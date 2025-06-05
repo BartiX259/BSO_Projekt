@@ -9,7 +9,12 @@
 </head>
 <body>
     <div class="main-title">BSO Projekt - Symulator Kodowania Gold</div>
-    <div class="subtitle">Konfiguracja Modułów</div>    <form id="sim-form">
+    <div class="subtitle">Konfiguracja Modułów</div>
+    
+    <form id="sim-form" 
+          hx-post="/simulate" 
+          hx-target="#simulation-status"
+          hx-swap="innerHTML">
         <div class="modules-grid">
             <div class="card">
                 <div class="card-header"><span class="icon">📋</span>Dane Wejściowe</div>
@@ -81,97 +86,130 @@
             </div>
         </div>
         <div class="actions">
-            <button type="button" class="btn-main" onclick="runSimulation()">Uruchom Symulację</button>
+            <button type="submit" class="btn-main">Uruchom Symulację</button>
             <button type="reset" class="btn-reset">Reset Konfiguracji</button>
         </div>
     </form>
-      <script>
-    async function runSimulation() {
-        const form = document.getElementById('sim-form');
-        const formData = new FormData(form);
-        
-        // Disable button during simulation
-        const btn = document.querySelector('.btn-main');
-        btn.disabled = true;
-        btn.textContent = 'Trwa symulacja...';
-        
-        // Clear all results
-        document.getElementById('result-generator').innerHTML = 'Generowanie...';
-        document.getElementById('result-encoder').innerHTML = 'Kodowanie...';
-        document.getElementById('result-error').innerHTML = 'Dodawanie błędów...';
-        document.getElementById('result-decoder').innerHTML = 'Dekodowanie...';
-        document.getElementById('result-ber').innerHTML = 'Analiza BER...';
+    
+    <div id="simulation-status"></div>
+    
+    <script>
+    // Add event listeners for HTMX events
+    document.addEventListener('htmx:beforeRequest', function(evt) {
+        if (evt.detail.elt.id === 'sim-form') {
+            console.log('Starting simulation...');
+            document.getElementById('result-generator').innerHTML = 'Generowanie...';
+            document.getElementById('result-encoder').innerHTML = 'Kodowanie...';
+            document.getElementById('result-error').innerHTML = 'Dodawanie błędów...';
+            document.getElementById('result-decoder').innerHTML = 'Dekodowanie...';
+            document.getElementById('result-ber').innerHTML = 'Analiza BER...';
+            
+            const btn = document.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            btn.textContent = 'Trwa symulacja...';
+        }
+    });
+    
+    document.addEventListener('htmx:afterRequest', function(evt) {
+        if (evt.detail.elt.id === 'sim-form') {
+            console.log('Simulation completed, loading module results...');
+            const btn = document.querySelector('button[type="submit"]');
+            btn.disabled = false;
+            btn.textContent = 'Uruchom Symulację';
+            
+            // Check if simulation was successful (status 200)
+            if (evt.detail.xhr.status === 200) {
+                // Add a small delay to ensure the backend has finished storing results
+                setTimeout(loadModuleResults, 100);
+            } else {
+                console.error('Simulation failed with status:', evt.detail.xhr.status);
+            }
+        }
+    });
+    
+    async function loadModuleResults() {
+        console.log('Loading module results...');
         
         try {
-            // First, run the complete simulation to populate global results
-            const simulateResponse = await fetch('/simulate', {
-                method: 'POST',
-                body: formData
-            });
-            
-            if (!simulateResponse.ok) {
-                throw new Error('Simulation failed');
-            }
-            
-            // Now call each module handler to get their specific results
-            
-            // 1. Generator
+            // 1. Generator - always load
             const generatorResponse = await fetch('/generator');
             if (generatorResponse.ok) {
                 const generatorHtml = await generatorResponse.text();
                 document.getElementById('result-generator').innerHTML = generatorHtml;
+                console.log('Generator result loaded');
+            } else {
+                console.error('Generator request failed:', generatorResponse.status);
+                document.getElementById('result-generator').innerHTML = '<div class="error">Błąd ładowania generatora</div>';
             }
             
-            // 2. Encoder
+            // 2. Encoder - always load
             const encoderResponse = await fetch('/encoder');
             if (encoderResponse.ok) {
                 const encoderHtml = await encoderResponse.text();
                 document.getElementById('result-encoder').innerHTML = encoderHtml;
+                console.log('Encoder result loaded');
+            } else {
+                console.error('Encoder request failed:', encoderResponse.status);
+                document.getElementById('result-encoder').innerHTML = '<div class="error">Błąd ładowania kodera</div>';
             }
             
-            // 3. Error (if enabled)
-            if (formData.get('errorEnabled') === 'on') {
+            // 3. Error module
+            const errorEnabled = document.querySelector('input[name="errorEnabled"]').checked;
+            console.log('Error enabled:', errorEnabled);
+            if (errorEnabled) {
                 const errorResponse = await fetch('/error');
                 if (errorResponse.ok) {
                     const errorHtml = await errorResponse.text();
                     document.getElementById('result-error').innerHTML = errorHtml;
+                    console.log('Error result loaded');
+                } else {
+                    console.error('Error request failed:', errorResponse.status);
+                    document.getElementById('result-error').innerHTML = '<div class="error">Błąd ładowania modułu błędów</div>';
                 }
             } else {
                 document.getElementById('result-error').innerHTML = '<div class="result-item">Moduł wyłączony</div>';
             }
             
-            // 4. Decoder (if enabled)
-            if (formData.get('decoderEnabled') === 'on') {
+            // 4. Decoder module
+            const decoderEnabled = document.querySelector('input[name="decoderEnabled"]').checked;
+            console.log('Decoder enabled:', decoderEnabled);
+            if (decoderEnabled) {
                 const decoderResponse = await fetch('/decoder');
                 if (decoderResponse.ok) {
                     const decoderHtml = await decoderResponse.text();
                     document.getElementById('result-decoder').innerHTML = decoderHtml;
+                    console.log('Decoder result loaded');
+                } else {
+                    console.error('Decoder request failed:', decoderResponse.status);
+                    document.getElementById('result-decoder').innerHTML = '<div class="error">Błąd ładowania dekodera</div>';
                 }
             } else {
                 document.getElementById('result-decoder').innerHTML = '<div class="result-item">Moduł wyłączony</div>';
             }
             
-            // 5. BER (if enabled)
-            if (formData.get('berEnabled') === 'on') {
+            // 5. BER module
+            const berEnabled = document.querySelector('input[name="berEnabled"]').checked;
+            console.log('BER enabled:', berEnabled);
+            if (berEnabled) {
                 const berResponse = await fetch('/ber');
                 if (berResponse.ok) {
                     const berHtml = await berResponse.text();
                     document.getElementById('result-ber').innerHTML = berHtml;
+                    console.log('BER result loaded');
+                } else {
+                    console.error('BER request failed:', berResponse.status);
+                    document.getElementById('result-ber').innerHTML = '<div class="error">Błąd ładowania analizy BER</div>';
                 }
             } else {
                 document.getElementById('result-ber').innerHTML = '<div class="result-item">Moduł wyłączony</div>';
             }
             
         } catch (error) {
-            console.error('Error:', error);
-            alert('Błąd podczas symulacji: ' + error.message);
-        } finally {
-            // Re-enable button
-            btn.disabled = false;
-            btn.textContent = 'Uruchom Symulację';
+            console.error('Error loading module results:', error);
         }
     }
     </script>
+    
     <div id="results"></div>
 </body>
 </html>
