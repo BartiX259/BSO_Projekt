@@ -1,6 +1,7 @@
 package src
 
 import (
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -15,6 +16,7 @@ type ResponseData struct {
 	BitSequence 	string
 	EncodedSequence	string
 	DecodedSequence string
+	BER				string
 }
 
 // Serve the main HTML page using a template (Exported)
@@ -60,13 +62,16 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("gold code: %s", goldCode.String())
 	encoded := simulation.EncodeWithGold(*bitSeq, *goldCode)
 	log.Printf("encoded: %s", encoded.String())
-	decoded := simulation.DecodeWithGold(*encoded, *goldCode)
+	injected, _ := simulation.AddErrors(encoded, 0.5, "random")
+	decoded := simulation.DecodeWithGold(*injected, *goldCode)
+	ber := simulation.CalculateBER(*bitSeq, *decoded)
 
 	data := ResponseData{
 		Timestamp:   time.Now().Format(time.RFC1123),
 		BitSequence: bitSeq.String(),
 		EncodedSequence: encoded.String(),
 		DecodedSequence: decoded.String(),
+		BER: fmt.Sprintf("%f", ber),
 	}
 
 	tmpl, err := template.ParseFiles("templates/response.html")
