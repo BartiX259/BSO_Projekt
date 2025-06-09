@@ -16,6 +16,7 @@ func main() {
 	log.Println("Serving static files from ./static/ directory under /static/ path") // --- Page Handlers ---
 	http.HandleFunc("/", src.IndexHandler)
 	http.HandleFunc("/simulate", src.SimulateHandler)
+	http.HandleFunc("/download", src.DownloadResultsHandler)
 
 	// --- Individual Module Handlers ---
 	http.HandleFunc("/generator", src.GeneratorHandler)

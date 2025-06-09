@@ -5,6 +5,8 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,6 +42,8 @@ type SimulationResults struct {
 }
 
 var globalResults = &SimulationResults{}
+var latestResultFilePath string      // Path to the most recently saved result file
+var latestResultFileMutex sync.RWMutex
 
 // ResponseData holds data for the response template
 type ResponseData struct {
@@ -113,6 +117,27 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error executing index template: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
+}
+
+// Handle downloading simulation result file
+func DownloadResultsHandler(w http.ResponseWriter, r *http.Request) {
+	latestResultFileMutex.RLock()
+	currentFilePath := latestResultFilePath
+	latestResultFileMutex.RUnlock()
+
+	if currentFilePath == "" {
+		http.Error(w, "No simulation results have been saved yet. Please run a simulation first.", http.StatusNotFound)
+		return
+	}
+
+	if _, err := os.Stat(currentFilePath); os.IsNotExist(err) {
+		log.Printf("DownloadResultsHandler: File '%s' not found on server, though path was set.", currentFilePath)
+		http.Error(w, "Saved results file not found on server. It may have been deleted. Please run a new simulation.", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+filepath.Base(currentFilePath)+"\"")
+	http.ServeFile(w, r, currentFilePath)
 }
 
 // Handle the simulation endpoint - runs complete simulation pipeline and stores results globally
@@ -317,7 +342,17 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	globalResults.OriginalAutocorr = originalAutocorr
 	globalResults.EncodedAutocorr = encodedAutocorr
 	globalResults.CorruptedAutocorr = corruptedAutocorr
+	resultsSnapshot := *globalResults 
 	globalResults.mutex.Unlock()
+
+	savedPath, err := SaveResultsToFileOnServer(&resultsSnapshot)
+	if err != nil {
+		log.Printf("Error saving simulation results to file: %v", err)
+	} else {
+		latestResultFileMutex.Lock()
+		latestResultFilePath = savedPath
+		latestResultFileMutex.Unlock()
+	}
 
 	// Return success response with HTMX trigger event
 	w.Header().Set("Content-Type", "text/html")
