@@ -1280,5 +1280,3 @@ func parseTapsWithDefault(tapsStr string, defaultTaps []uint) []uint {
 	}
 	return parsed
 }
-
-// --- END ---

@@ -208,7 +208,7 @@ func SimulateCDMA(n uint, poly1 []uint, poly2 []uint,
 	// Trim decoded sequences to original data lengths
 	if finalDecodedA.Len() > dataLenA {
 		trimmedDecodedA := NewBitSequence(dataLenA)
-		for i := 0; i < dataLenA; i++ {
+		for i := range dataLenA {
 			trimmedDecodedA.Set(i, finalDecodedA.Get(i))
 		}
 		finalDecodedA = trimmedDecodedA
@@ -216,7 +216,7 @@ func SimulateCDMA(n uint, poly1 []uint, poly2 []uint,
 
 	if finalDecodedB.Len() > dataLenB {
 		trimmedDecodedB := NewBitSequence(dataLenB)
-		for i := 0; i < dataLenB; i++ {
+		for i := range dataLenB {
 			trimmedDecodedB.Set(i, finalDecodedB.Get(i))
 		}
 		finalDecodedB = trimmedDecodedB
@@ -329,10 +329,10 @@ func SimulateCDMA(n uint, poly1 []uint, poly2 []uint,
 		TransmittedSignalBStr:      floatSignalToString(transmittedSignalB, displayLimit),
 		CombinedSignalStr:          floatSignalToString(combinedSignal, displayLimit),
 		ReceivedSignalStr:          floatSignalToString(receivedSignal, displayLimit),
-		ReceivedSignalSegmentAStr:  receivedSignalSegmentAStr, // NEW
-		ReceivedSignalSegmentBStr:  receivedSignalSegmentBStr, // NEW
-		CorrelatedSignalUserAStr:   correlatedSignalUserAStr,  // NEW
-		CorrelatedSignalUserBStr:   correlatedSignalUserBStr,  // NEW
+		ReceivedSignalSegmentAStr:  receivedSignalSegmentAStr,
+		ReceivedSignalSegmentBStr:  receivedSignalSegmentBStr,
+		CorrelatedSignalUserAStr:   correlatedSignalUserAStr,
+		CorrelatedSignalUserBStr:   correlatedSignalUserBStr,
 		BER_A:                      berA,
 		ErrorCountA:                errCountA,
 		BER_B:                      berB,
