@@ -18,7 +18,8 @@ func main() {
 	// --- Page Handlers ---
 	http.HandleFunc("/", src.IndexHandler)
 	http.HandleFunc("/simulate", src.SimulateHandler)
-	http.HandleFunc("/download", src.DownloadResultsHandler)
+	http.HandleFunc("/download", src.DownloadGeneralSimResultsHandler)
+	http.HandleFunc("/download-cdma", src.DownloadCDMASimResultsHandler)
 
 	// --- Individual Module Handlers ---
 	http.HandleFunc("/generator", src.GeneratorHandler)

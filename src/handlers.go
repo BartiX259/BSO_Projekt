@@ -43,9 +43,12 @@ type SimulationResults struct {
 }
 
 var globalResults = &SimulationResults{}
-var latestResultFilePath string      // Path to the most recently saved result file
-var latestResultFileMutex sync.RWMutex
 
+var latestGeneralSimFilePath string
+var latestGeneralSimFileMutex sync.RWMutex
+
+var latestCDMASimFilePath string
+var latestCDMASimFileMutex sync.RWMutex
 // --- NEW: CDMA Simulation global storage ---
 // var cdmaGlobalResults = struct { // This will be replaced
 // 	sync.RWMutex
@@ -269,25 +272,44 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Handle downloading simulation result file
-func DownloadResultsHandler(w http.ResponseWriter, r *http.Request) {
-	latestResultFileMutex.RLock()
-	currentFilePath := latestResultFilePath
-	latestResultFileMutex.RUnlock()
+// DownloadGeneralSimResultsHandler serves the latest general simulation results file.
+func DownloadGeneralSimResultsHandler(w http.ResponseWriter, r *http.Request) {
+	latestGeneralSimFileMutex.RLock()
+	currentFilePath := latestGeneralSimFilePath
+	latestGeneralSimFileMutex.RUnlock()
 
 	if currentFilePath == "" {
-		http.Error(w, "No simulation results have been saved yet. Please run a simulation first.", http.StatusNotFound)
+		http.Error(w, "No general simulation results saved yet. Run a general simulation first.", http.StatusNotFound)
 		return
 	}
 
-	if _, err := os.Stat(currentFilePath); os.IsNotExist(err) {
-		log.Printf("DownloadResultsHandler: File '%s' not found on server, though path was set.", currentFilePath)
-		http.Error(w, "Saved results file not found on server. It may have been deleted. Please run a new simulation.", http.StatusNotFound)
+	serveFileForDownload(w, r, currentFilePath)
+}
+
+// DownloadCDMASimResultsHandler serves the latest CDMA simulation results file.
+func DownloadCDMASimResultsHandler(w http.ResponseWriter, r *http.Request) {
+	latestCDMASimFileMutex.RLock()
+	currentFilePath := latestCDMASimFilePath
+	latestCDMASimFileMutex.RUnlock()
+
+	if currentFilePath == "" {
+		http.Error(w, "No CDMA simulation results saved yet. Run a CDMA simulation first.", http.StatusNotFound)
 		return
 	}
 
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+filepath.Base(currentFilePath)+"\"")
-	http.ServeFile(w, r, currentFilePath)
+	serveFileForDownload(w, r, currentFilePath)
+}
+
+// serveFileForDownload is a helper to reduce duplication
+func serveFileForDownload(w http.ResponseWriter, r *http.Request, filePath string) {
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		log.Printf("serveFileForDownload: File '%s' not found on server.", filePath)
+		http.Error(w, "Saved results file not found. It may have been deleted. Please run a new simulation.", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+filepath.Base(filePath)+"\"")
+	http.ServeFile(w, r, filePath)
 }
 
 // Handle the simulation endpoint - runs complete simulation pipeline and stores results globally
@@ -492,16 +514,15 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	globalResults.OriginalAutocorr = originalAutocorr
 	globalResults.EncodedAutocorr = encodedAutocorr
 	globalResults.CorruptedAutocorr = corruptedAutocorr
-	resultsSnapshot := *globalResults 
 	globalResults.mutex.Unlock()
 
-	savedPath, err := SaveResultsToFileOnServer(&resultsSnapshot)
+	savedPath, err := SaveSimulationResultsToFile(globalResults)
 	if err != nil {
 		log.Printf("Error saving simulation results to file: %v", err)
 	} else {
-		latestResultFileMutex.Lock()
-		latestResultFilePath = savedPath
-		latestResultFileMutex.Unlock()
+		latestGeneralSimFileMutex.Lock()
+		latestGeneralSimFilePath = savedPath
+		latestGeneralSimFileMutex.Unlock()
 	}
 
 	// Return success response with HTMX trigger event
@@ -902,6 +923,13 @@ func CDMASimulateHandler(w http.ResponseWriter, r *http.Request) {
 	cdmaGlobalState.MaxOffPeakAutocorrelationB = simResult.MaxOffPeakAutocorrelationB
 	cdmaGlobalState.CrossCorrelationAB = simResult.CrossCorrelationAB
 	cdmaGlobalState.mutex.Unlock()
+
+	savedPath, err := SaveCDMAResultsToFile(simResult)
+	if err == nil {
+		latestCDMASimFileMutex.Lock()
+		latestCDMASimFilePath = savedPath
+		latestCDMASimFileMutex.Unlock()
+	}
 
 	log.Printf("CDMA Simulation completed. Global state updated. SimDataLen: %d", simResult.SimulationDataLength)
 
