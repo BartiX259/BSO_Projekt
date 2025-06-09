@@ -32,7 +32,11 @@ type SimulationResults struct {
 	GoldTaps1   []uint
 	GoldTaps2   []uint
 	DecoderType string
-	mutex       sync.RWMutex
+	// Add autocorrelation analysis
+	OriginalAutocorr  float32
+	EncodedAutocorr   float32
+	CorruptedAutocorr float32
+	mutex             sync.RWMutex
 }
 
 var globalResults = &SimulationResults{}
@@ -87,6 +91,13 @@ type BERData struct {
 	DecodedSequence  string
 	OriginalASCII    string // NEW: ASCII representation of original
 	DecodedASCII     string // NEW: ASCII representation of decoded
+}
+
+// AutocorrelationData holds data for autocorrelation template
+type AutocorrelationData struct {
+	OriginalMaxOffPeak  string
+	EncodedMaxOffPeak   string
+	CorruptedMaxOffPeak string
 }
 
 // Serve the main HTML page using a template (Exported)
@@ -218,6 +229,11 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	decoded := simulation.DecodeWithGold(*corrupted, *goldCode)
 	ber := simulation.CalculateBER(*bitSeq, *decoded)
 
+	// Calculate autocorrelation analysis
+	originalAutocorr := simulation.MaxAbsoluteOffPeak(simulation.CalculatePeriodicAutocorrelation(*bitSeq))
+	encodedAutocorr := simulation.MaxAbsoluteOffPeak(simulation.CalculatePeriodicAutocorrelation(*encoded))
+	corruptedAutocorr := simulation.MaxAbsoluteOffPeak(simulation.CalculatePeriodicAutocorrelation(*corrupted))
+
 	// Count errors for display
 	errorCount := 0
 	for i := range bitSeq.Len() {
@@ -245,10 +261,15 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	globalResults.GoldTaps1 = taps1
 	globalResults.GoldTaps2 = taps2
 	globalResults.DecoderType = decoderType
+	// Store autocorrelation results
+	globalResults.OriginalAutocorr = originalAutocorr
+	globalResults.EncodedAutocorr = encodedAutocorr
+	globalResults.CorruptedAutocorr = corruptedAutocorr
 	globalResults.mutex.Unlock()
 
-	// Return simple success response for HTMX
+	// Return success response with HTMX trigger event
 	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("HX-Trigger", "simulation-complete")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, `<div class="success-message">Symulacja zakończona pomyślnie! Czas: %s</div>`,
 		time.Now().Format("15:04:05"))
@@ -466,6 +487,48 @@ func BERHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("Error executing BER template: %v", err)
+	}
+}
+
+// AutocorrelationHandler returns stored autocorrelation analysis results
+func AutocorrelationHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("AutocorrelationHandler called")
+
+	// Get stored results from global state
+	globalResults.mutex.RLock()
+
+	// Check if we have stored results
+	if globalResults.Original == nil {
+		globalResults.mutex.RUnlock()
+		log.Printf("AutocorrelationHandler: No simulation results available")
+		http.Error(w, "No simulation results available. Please run complete simulation first.", http.StatusBadRequest)
+		return
+	}
+
+	data := AutocorrelationData{
+		OriginalMaxOffPeak:  fmt.Sprintf("%.4f", globalResults.OriginalAutocorr),
+		EncodedMaxOffPeak:   fmt.Sprintf("%.4f", globalResults.EncodedAutocorr),
+		CorruptedMaxOffPeak: fmt.Sprintf("%.4f", globalResults.CorruptedAutocorr),
+	}
+	globalResults.mutex.RUnlock()
+
+	log.Printf("AutocorrelationHandler: Returning data - Original: %.4f, Encoded: %.4f, Corrupted: %.4f",
+		globalResults.OriginalAutocorr, globalResults.EncodedAutocorr, globalResults.CorruptedAutocorr)
+
+	tmpl, err := template.ParseFiles("templates/autocorrelation_result.html")
+	if err != nil {
+		log.Printf("AutocorrelationHandler: Template error: %v", err)
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Cache-Control", "no-cache")
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing autocorrelation template: %v", err)
+		http.Error(w, "Template execution error", http.StatusInternalServerError)
+	} else {
+		log.Printf("AutocorrelationHandler: Template executed successfully")
 	}
 }
 

@@ -1,276 +1,139 @@
 <!DOCTYPE html>
 <html lang="pl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BSO Projekt – Symulator Kodowania Gold</title>
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="https://unpkg.com/htmx.org@1.9.10" crossorigin="anonymous"></script>
-</head>
-<body>
-    <div class="main-title">BSO Projekt - Symulator Kodu Golda</div>
-    <div class="subtitle">Karol Adamski, Bartłomiej Masiak</div>
-    
-    <form id="sim-form" 
-          hx-post="/simulate" 
-          hx-target="#simulation-status"
-          hx-swap="innerHTML">
-        <div class="modules-grid responsive-grid">
-            <div class="card" id="card-generator">
-                <div class="card-header"><span class="icon">📋</span>Dane Wejściowe</div>
-                <div class="card-config">
-                    <label>Tekst do zakodowania:
-                        <input type="text" name="seqText" placeholder="np. hello world">
-                    </label>
-                    <label>Długość losowej sekwencji:
-                        <input type="number" name="seqLength" value="64" min="1" max="256">
-                    </label>
-                </div>
-                <div class="card-result" id="result-generator">(wynik pojawi się po uruchomieniu)</div>
-            </div>
-            <div class="card" id="card-encoder">
-                <div class="card-header"><span class="icon">🔑</span>Konfiguracja Kodu Gold</div>
-                <div class="card-config">
-                    <label>Długość rejestru (n):
-                        <input type="number" name="goldN" value="10" min="2" max="16">
-                    </label>                    <label>LFSR1 Taps (przecinek):
-                        <input type="text" name="goldTaps1" value="0,3">
-                    </label>
-                    <label>LFSR2 Taps (przecinek):
-                        <input type="text" name="goldTaps2" value="0,2,3,8">
-                    </label>
-                </div>
-                <div class="card-result" id="result-encoder">(wynik pojawi się po uruchomieniu)</div>
-            </div>
-            <div class="card" id="card-error">
-                <div class="card-header">
-                    <input type="checkbox" name="errorEnabled" checked> <span class="icon">⚡</span>Dodawanie Błędów
-                </div>
-                <div class="card-config">
-                    <label>Typ błędu:
-                        <select name="errorType">
-                            <option value="random">Losowy</option>
-                            <option value="burst">Seria (burst)</option>
-                        </select>
-                    </label>
-                    <label>Prawdopodobieństwo [%]:
-                        <input type="number" name="errorRate" value="5" min="0" max="100">
-                    </label>
-                </div>
-                <div class="card-result" id="result-error">(wynik pojawi się po uruchomieniu)</div>
-            </div>
-            <div class="card" id="card-decoder">
-                <div class="card-header">
-                    <input type="checkbox" name="decoderEnabled" checked> 
-                    <span class="icon">🔒</span>Dekoder
-                </div>
-                <div class="card-config">
-                    <label>Typ dekodera:
-                        <select name="decoderType">
-                            <option value="xor">Prosty XOR</option>
-                        </select>
-                    </label>
-                </div>
-                <div class="card-result" id="result-decoder">(wynik pojawi się po uruchomieniu)</div>
-            </div>
-            
-            <div class="card" id="card-ber">
-                <div class="card-header">
-                    <input type="checkbox" name="berEnabled" checked> 
-                    <span class="icon">📊</span>Analiza BER
-                </div>
-                <div class="card-config">
-                    <span>Porównanie oryginału i wyjścia dekodera</span>
-                </div>
-                <div class="card-result" id="result-ber">(wynik pojawi się po uruchomieniu)</div>
-            </div>
-        </div>
-        <div class="actions">
-            <button type="submit" class="btn-main">Uruchom Symulację</button>
-            <button type="reset" class="btn-reset">Reset Konfiguracji</button>
-        </div>
-    </form>
-    
-    <div id="simulation-status"></div>
-    
-    <script>
-    // Helper to set innerHTML with fade-in animation
-    function setCardResultFadeIn(id, html) {
-        const el = document.getElementById(id);
-        if (!el) return;
-        // Remove and force reflow to restart animation even if same content
-        el.classList.remove('fade-in');
-        el.style.opacity = '0';
-        // Use requestAnimationFrame for reliable reflow
-        requestAnimationFrame(() => {
-            el.innerHTML = html;
-            void el.offsetWidth;
-            el.classList.add('fade-in');
-            // After animation, ensure opacity is 1 and remove the class
-            setTimeout(() => {
-                el.classList.remove('fade-in');
-                el.style.opacity = '1';
-            }, 700); // match CSS animation duration (0.65s + buffer)
-        });
-
-        // Expand card if not placeholder
-        let cardId = null;
-        if (id === 'result-generator') cardId = 'card-generator';
-        if (id === 'result-encoder') cardId = 'card-encoder';
-        if (id === 'result-error') cardId = 'card-error';
-        if (id === 'result-decoder') cardId = 'card-decoder';
-        if (id === 'result-ber') cardId = 'card-ber';
-
-        if (cardId) {
-            // If html contains "(wynik pojawi się po uruchomieniu)" or "Moduł wyłączony", collapse
-            if (
-                html.includes('(wynik pojawi się po uruchomieniu)') ||
-                html.includes('Moduł wyłączony') ||
-                html.includes('Generowanie...') ||
-                html.includes('Kodowanie...') ||
-                html.includes('Dodawanie błędów...') ||
-                html.includes('Dekodowanie...') ||
-                html.includes('Analiza BER...')
-            ) {
-                setCardExpanded(cardId, false);
-            } else {
-                setCardExpanded(cardId, true);
-            }
-        }
-    }
-
-    // Helper to expand/collapse card smoothly
-    function setCardExpanded(cardId, expanded) {
-        const card = document.getElementById(cardId);
-        if (!card) return;
-        if (expanded) {
-            card.classList.add('expanded');
-        } else {
-            card.classList.remove('expanded');
-        }
-    }
-
-    // Add event listeners for HTMX events
-    document.addEventListener('htmx:beforeRequest', function(evt) {
-        // Check if the event is for the simulation form
-        if (evt.detail.elt && evt.detail.elt.id === 'sim-form') {
-            // Clear simulation status
-            document.getElementById('simulation-status').innerHTML = '';
-            setCardResultFadeIn('result-generator', 'Generowanie...');
-            setCardResultFadeIn('result-encoder', 'Kodowanie...');
-            setCardResultFadeIn('result-error', 'Dodawanie błędów...');
-            setCardResultFadeIn('result-decoder', 'Dekodowanie...');
-            setCardResultFadeIn('result-ber', 'Analiza BER...');
-            // Disable submit button
-            const btn = document.querySelector('button[type="submit"]');
-            if (btn) {
-                btn.disabled = true;
-                btn.textContent = 'Trwa symulacja...';
-            }
-        }
-    });
-
-    document.addEventListener('htmx:afterRequest', function(evt) {
-        if (evt.detail.elt && evt.detail.elt.id === 'sim-form') {
-            // Enable submit button
-            const btn = document.querySelector('button[type="submit"]');
-            if (btn) {
-                btn.disabled = false;
-                btn.textContent = 'Uruchom Symulację';
-            }
-            // Check if simulation was successful (status 200)
-            if (evt.detail.xhr && evt.detail.xhr.status === 200) {
-                setTimeout(loadModuleResults, 100);
-            } else {
-                // Show error in simulation status
-                document.getElementById('simulation-status').innerHTML = '<div class="error">Błąd symulacji (status ' + evt.detail.xhr.status + ')</div>';
-            }
-        }
-    });
-    
-    async function loadModuleResults() {
-        console.log('Loading module results...');
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>BSO Projekt – Symulator Kodowania Gold</title>
+        <link rel="stylesheet" href="/static/style.css">
+        <script src="https://unpkg.com/htmx.org@1.9.10" crossorigin="anonymous"></script>
+    </head>
+    <body>
+        <div class="main-title">BSO Projekt - Symulator Kodu Golda</div>
+        <div class="subtitle">Karol Adamski, Bartłomiej Masiak</div>
         
-        try {
-            // 1. Generator - always load
-            const generatorResponse = await fetch('/generator');
-            if (generatorResponse.ok) {
-                const generatorHtml = await generatorResponse.text();
-                setCardResultFadeIn('result-generator', generatorHtml);
-                console.log('Generator result loaded');
-            } else {
-                console.error('Generator request failed:', generatorResponse.status);
-                setCardResultFadeIn('result-generator', '<div class="error">Błąd ładowania generatora</div>');
-            }
-            
-            // 2. Encoder - always load
-            const encoderResponse = await fetch('/encoder');
-            if (encoderResponse.ok) {
-                const encoderHtml = await encoderResponse.text();
-                setCardResultFadeIn('result-encoder', encoderHtml);
-                console.log('Encoder result loaded');
-            } else {
-                console.error('Encoder request failed:', encoderResponse.status);
-                setCardResultFadeIn('result-encoder', '<div class="error">Błąd ładowania kodera</div>');
-            }
-            
-            // 3. Error module
-            const errorEnabled = document.querySelector('input[name="errorEnabled"]').checked;
-            console.log('Error enabled:', errorEnabled);
-            if (errorEnabled) {
-                const errorResponse = await fetch('/error');
-                if (errorResponse.ok) {
-                    const errorHtml = await errorResponse.text();
-                    setCardResultFadeIn('result-error', errorHtml);
-                    console.log('Error result loaded');
-                } else {
-                    console.error('Error request failed:', errorResponse.status);
-                    setCardResultFadeIn('result-error', '<div class="error">Błąd ładowania modułu błędów</div>');
-                }
-            } else {
-                setCardResultFadeIn('result-error', '<div class="result-item">Moduł wyłączony</div>');
-            }
-            
-            // 4. Decoder module
-            const decoderEnabled = document.querySelector('input[name="decoderEnabled"]').checked;
-            console.log('Decoder enabled:', decoderEnabled);
-            if (decoderEnabled) {
-                const decoderResponse = await fetch('/decoder');
-                if (decoderResponse.ok) {
-                    const decoderHtml = await decoderResponse.text();
-                    setCardResultFadeIn('result-decoder', decoderHtml);
-                    console.log('Decoder result loaded');
-                } else {
-                    console.error('Decoder request failed:', decoderResponse.status);
-                    setCardResultFadeIn('result-decoder', '<div class="error">Błąd ładowania dekodera</div>');
-                }
-            } else {
-                setCardResultFadeIn('result-decoder', '<div class="result-item">Moduł wyłączony</div>');
-            }
-            
-            // 5. BER module
-            const berEnabled = document.querySelector('input[name="berEnabled"]').checked;
-            console.log('BER enabled:', berEnabled);
-            if (berEnabled) {
-                const berResponse = await fetch('/ber');
-                if (berResponse.ok) {
-                    const berHtml = await berResponse.text();
-                    setCardResultFadeIn('result-ber', berHtml);
-                    console.log('BER result loaded');
-                } else {
-                    console.error('BER request failed:', berResponse.status);
-                    setCardResultFadeIn('result-ber', '<div class="error">Błąd ładowania analizy BER</div>');
-                }
-            } else {
-                setCardResultFadeIn('result-ber', '<div class="result-item">Moduł wyłączony</div>');
-            }
-            
-        } catch (error) {
-            console.error('Error loading module results:', error);
-        }
-    }
-    </script>
-    
-    <div id="results"></div>
-</body>
+        <form hx-post="/simulate" 
+            hx-target="#simulation-status"
+            hx-swap="innerHTML">
+            <div class="modules-grid responsive-grid">
+                <div class="card" id="card-generator">
+                    <div class="card-header"><span class="icon">📋</span>Dane Wejściowe</div>
+                    <div class="card-config">
+                        <label>Tekst do zakodowania:
+                            <input type="text" name="seqText" placeholder="np. hello world">
+                        </label>
+                        <label>Długość losowej sekwencji:
+                            <input type="number" name="seqLength" value="64" min="1" max="256">
+                        </label>
+                    </div>
+                    <div class="card-result" 
+                        id="result-generator"
+                        hx-get="/generator"
+                        hx-trigger="simulation-complete from:body"
+                        hx-target="#result-generator"
+                        hx-swap="innerHTML">(wynik pojawi się po uruchomieniu)</div>
+                </div>
+                <div class="card" id="card-encoder">
+                    <div class="card-header"><span class="icon">🔑</span>Konfiguracja Kodu Gold</div>
+                    <div class="card-config">
+                        <label>Długość rejestru (n):
+                            <input type="number" name="goldN" value="10" min="2" max="16">
+                        </label>
+                        <label>LFSR1 Taps (przecinek):
+                            <input type="text" name="goldTaps1" value="0,3">
+                        </label>
+                        <label>LFSR2 Taps (przecinek):
+                            <input type="text" name="goldTaps2" value="0,2,3,8">
+                        </label>
+                    </div>
+                    <div class="card-result" 
+                        id="result-encoder"
+                        hx-get="/encoder"
+                        hx-trigger="simulation-complete from:body"
+                        hx-target="#result-encoder"
+                        hx-swap="innerHTML">(wynik pojawi się po uruchomieniu)</div>
+                </div>
+                <div class="card" id="card-error">
+                    <div class="card-header">
+                        <input type="checkbox" name="errorEnabled" checked> <span class="icon">⚡</span>Dodawanie Błędów
+                    </div>
+                    <div class="card-config">
+                        <label>Typ błędu:
+                            <select name="errorType">
+                                <option value="random">Losowy</option>
+                                <option value="burst">Seria (burst)</option>
+                            </select>
+                        </label>
+                        <label>Prawdopodobieństwo [%]:
+                            <input type="number" name="errorRate" value="5" min="0" max="100">
+                        </label>
+                    </div>
+                    <div class="card-result" 
+                        id="result-error"
+                        hx-get="/error"
+                        hx-trigger="simulation-complete from:body"
+                        hx-target="#result-error"
+                        hx-swap="innerHTML">(wynik pojawi się po uruchomieniu)</div>
+                </div>
+                <div class="card" id="card-decoder">
+                    <div class="card-header">
+                        <input type="checkbox" name="decoderEnabled" checked> 
+                        <span class="icon">🔒</span>Dekoder
+                    </div>
+                    <div class="card-config">
+                        <label>Typ dekodera:
+                            <select name="decoderType">
+                                <option value="xor">Prosty XOR</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="card-result" 
+                        id="result-decoder"
+                        hx-get="/decoder"
+                        hx-trigger="simulation-complete from:body"
+                        hx-target="#result-decoder"
+                        hx-swap="innerHTML">(wynik pojawi się po uruchomieniu)</div>
+                </div>
+                
+                <div class="card" id="card-ber">
+                    <div class="card-header">
+                        <input type="checkbox" name="berEnabled" checked> 
+                        <span class="icon">📊</span>Analiza BER
+                    </div>
+                    <div class="card-config">
+                        <span>Porównanie oryginału i wyjścia dekodera</span>
+                    </div>
+                    <div class="card-result" 
+                        id="result-ber"
+                        hx-get="/ber"
+                        hx-trigger="simulation-complete from:body"
+                        hx-target="#result-ber"
+                        hx-swap="innerHTML">(wynik pojawi się po uruchomieniu)</div>
+                </div>
+                
+                <div class="card" id="card-autocorrelation">
+                    <div class="card-header">
+                        <input type="checkbox" name="autocorrEnabled" checked> 
+                        <span class="icon">📈</span>Analiza Autokorelacji
+                    </div>
+                    <div class="card-config">
+                        <span>Analiza autokorelacji dla wszystkich ciągów</span>
+                    </div>
+                    <div class="card-result" 
+                        id="result-autocorrelation"
+                        hx-get="/autocorrelation"
+                        hx-trigger="simulation-complete from:body"
+                        hx-target="#result-autocorrelation"
+                        hx-swap="innerHTML">(wynik pojawi się po uruchomieniu)</div>
+                </div>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn-main">Uruchom Symulację</button>
+                <button type="reset" class="btn-reset">Reset Konfiguracji</button>
+            </div>
+        </form>
+        
+        <div id="simulation-status"></div>
+        
+        <div id="results"></div>
+    </body>
 </html>

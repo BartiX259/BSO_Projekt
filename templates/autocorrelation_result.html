@@ -1,0 +1,50 @@
+<div class="module-result">
+    <div class="result-label">Analiza Autokorelacji - wynik:</div>
+    <div class="autocorr-results">
+        <div class="autocorr-item">
+            <span class="autocorr-label">Ciąg oryginalny:</span>
+            <span class="autocorr-value">{{ .OriginalMaxOffPeak }}</span>
+        </div>
+        <div class="autocorr-item">
+            <span class="autocorr-label">Ciąg zakodowany:</span>
+            <span class="autocorr-value">{{ .EncodedMaxOffPeak }}</span>
+        </div>
+        <div class="autocorr-item">
+            <span class="autocorr-label">Ciąg z błędami:</span>
+            <span class="autocorr-value">{{ .CorruptedMaxOffPeak }}</span>
+        </div>
+    </div>
+    <div style="margin-top: 8px; font-size: 0.9em; color: #666;">
+        Maksymalna wartość bezwzględna autokorelacji (poza szczytem głównym)
+    </div>
+</div>
+
+<style>
+.autocorr-results {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.autocorr-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 8px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    border-left: 3px solid #007bff;
+}
+
+.autocorr-label {
+    font-weight: 500;
+    color: #333;
+}
+
+.autocorr-value {
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    color: #007bff;
+}
+</style>
