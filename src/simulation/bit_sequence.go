@@ -47,7 +47,7 @@ func (b *BitSequence) Len() int {
 	return b.length
 }
 
-// Debug: print all bits as a string
+// Convert bit sequence to string
 func (b *BitSequence) String() string {
 	str := ""
 	for i := range b.length {

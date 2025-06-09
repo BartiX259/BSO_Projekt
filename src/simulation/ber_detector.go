@@ -1,5 +1,6 @@
 package simulation
 
+// Calculates the bit error rate based on the original and decoded sequence
 func CalculateBER(originalSequence BitSequence, decodedSequence BitSequence) float32 {
 	if originalSequence.length != decodedSequence.length {
 		panic("Original sequence length not equal to decoded length")
