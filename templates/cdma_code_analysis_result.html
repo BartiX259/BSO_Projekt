@@ -1,0 +1,9 @@
+<div class="module-result">
+    <div class="result-label">Właściwości kodów - wynik:</div>
+    <div style="margin-top: 8px; font-size: 0.9em; color: #666;">
+        Autokorelacja (w szczycie): <strong>{{.AutocorrelationPeak}}</strong><br>
+        Maks. korelacja wzajemna (norm.): <strong>{{printf "%.4f" .CrossCorrelationAB}}</strong><br>
+        Maks. autokorelacja A (poza szczytem, norm.): <strong>{{printf "%.4f" .MaxOffPeakAutocorrelationA}}</strong><br>
+        Maks. autokorelacja B (poza szczytem, norm.): <strong>{{printf "%.4f" .MaxOffPeakAutocorrelationB}}</strong>
+    </div>
+</div>

@@ -133,6 +133,158 @@
         </form>
         
         <div id="simulation-status"></div>
+
+        <!-- Sekcja dla symulacji CDMA -->
+        <div class="main-title" style="margin-top: 40px;">Symulacja CDMA - Wielu Użytkowników</div>
+        <form hx-post="/cdma-simulate"
+              hx-target="#cdma-simulation-status"
+              hx-swap="innerHTML"
+              id="cdmaForm">
+            <div class="modules-grid responsive-grid">
+
+                <!-- Moduł 1: Konfiguracja Systemu -->
+                <div class="card" id="card-cdma-module1">
+                    <div class="card-header"><span class="icon">🔑</span>Konfiguracja Systemu CDMA</div>
+                    <div class="card-config">
+                        <label>Długość rejestru (n):
+                            <input type="number" name="cdmaGoldN" value="10" min="2" max="16">
+                        </label>
+                        <label>LFSR1 Taps (przecinek):
+                            <input type="text" name="cdmaGoldTaps1" value="0,3">
+                        </label>
+                        <label>LFSR2 Taps (przecinek):
+                            <input type="text" name="cdmaGoldTaps2" value="0,2,3,8">
+                        </label>
+                    </div>
+                    <div class="card-result"
+                         id="result-cdma-module1"
+                         hx-get="/cdma-system-config"
+                         hx-trigger="cdma-simulation-complete from:body"
+                         hx-target="#result-cdma-module1"
+                         hx-swap="innerHTML">(konfiguracja systemu)</div>
+                </div>
+
+                <!-- Moduł 2: Nadajniki -->
+                <div class="card" id="card-cdma-module2a">
+                    <div class="card-header"><span class="icon">📡</span>Nadajnik A</div>
+                    <div class="card-config">
+                        <label>Tekst do wysłania:
+                            <input type="text" name="cdmaTextUserA" placeholder="np. Ala ma kota" maxlength="50">
+                        </label>
+                        <label>Stan początkowy LFSR1:
+                            <input type="number" name="cdmaSeedA1" value="1">
+                        </label>
+                        <label>Stan początkowy LFSR2:
+                            <input type="number" name="cdmaSeedA2" value="1">
+                        </label>
+                    </div>
+                    <div class="card-result"
+                         id="result-cdma-module2a"
+                         hx-get="/cdma-transmitter-a-results"
+                         hx-trigger="cdma-simulation-complete from:body"
+                         hx-target="#result-cdma-module2a"
+                         hx-swap="innerHTML">(nadajnik A)</div>
+                </div>
+                
+                <div class="card" id="card-cdma-module2b">
+                    <div class="card-header"><span class="icon">📡</span>Nadajnik B</div>
+                    <div class="card-config">
+                        <label>Tekst do wysłania:
+                            <input type="text" name="cdmaTextUserB" placeholder="np. Jan ma psa" maxlength="50">
+                        </label>
+                        <label>Stan początkowy LFSR1:
+                            <input type="number" name="cdmaSeedB1" value="2">
+                        </label>
+                        <label>Stan początkowy LFSR2:
+                            <input type="number" name="cdmaSeedB2" value="2">
+                        </label>
+                    </div>
+                    <div class="card-result"
+                         id="result-cdma-module2b"
+                         hx-get="/cdma-transmitter-b-results"
+                         hx-trigger="cdma-simulation-complete from:body"
+                         hx-target="#result-cdma-module2b"
+                         hx-swap="innerHTML">(nadajnik B)</div>
+                </div>
+
+                <!-- Moduł 3: Kanał Komunikacyjny -->
+                <div class="card" id="card-cdma-module3">
+                    <div class="card-header"><span class="icon">🌊</span>Wspólny Kanał</div>
+                    <div class="card-config">
+                        <label>Poziom szumu [%]:
+                            <input type="number" name="cdmaNoiseLevel" value="5" step="0.5" min="0">
+                        </label>
+                        <label>Długość los. sekw. jeśli tekst pusty (bajty):
+                            <input type="number" name="cdmaSeqLengthRandom" value="1" min="1" max="3">
+                        </label>
+                    </div>
+                    <div class="card-result"
+                         id="result-cdma-module3"
+                         hx-get="/cdma-channel-results"
+                         hx-trigger="cdma-simulation-complete from:body"
+                         hx-target="#result-cdma-module3"
+                         hx-swap="innerHTML">(kanał komunikacyjny)</div>
+                </div>
+
+                <!-- Moduł 4: Odbiorniki -->
+                <div class="card" id="card-cdma-module4a">
+                    <div class="card-header"><span class="icon">🎧</span>Odbiornik A</div>
+                    <div class="card-result"
+                         id="result-cdma-module4a"
+                         hx-get="/cdma-receiver-a-results"
+                         hx-trigger="cdma-simulation-complete from:body"
+                         hx-target="#result-cdma-module4a"
+                         hx-swap="innerHTML">(odbiornik A)</div>
+                </div>
+                
+                <div class="card" id="card-cdma-module4b">
+                    <div class="card-header"><span class="icon">🎧</span>Odbiornik B</div>
+                    <div class="card-result"
+                         id="result-cdma-module4b"
+                         hx-get="/cdma-receiver-b-results"
+                         hx-trigger="cdma-simulation-complete from:body"
+                         hx-target="#result-cdma-module4b"
+                         hx-swap="innerHTML">(odbiornik B)</div>
+                </div>
+
+                <!-- Moduł 5: Analiza BER -->
+                <div class="card" id="card-cdma-module5a">
+                    <div class="card-header"><span class="icon">📊</span>Analiza BER (Użytkownik A)</div>
+                    <div class="card-result"
+                         id="result-cdma-module5a"
+                         hx-get="/cdma-ber-a-results"
+                         hx-trigger="cdma-simulation-complete from:body"
+                         hx-target="#result-cdma-module5a"
+                         hx-swap="innerHTML">(analiza BER A)</div>
+                </div>
+                
+                <div class="card" id="card-cdma-module5b">
+                    <div class="card-header"><span class="icon">📊</span>Analiza BER (Użytkownik B)</div>
+                    <div class="card-result"
+                         id="result-cdma-module5b"
+                         hx-get="/cdma-ber-b-results"
+                         hx-trigger="cdma-simulation-complete from:body"
+                         hx-target="#result-cdma-module5b"
+                         hx-swap="innerHTML">(analiza BER B)</div>
+                </div>
+
+                <!-- Moduł 6: Analiza Właściwości Kodów -->
+                <div class="card" id="card-cdma-module6">
+                    <div class="card-header"><span class="icon">📈</span>Analiza Właściwości Kodów</div>
+                    <div class="card-result"
+                         id="result-cdma-module6"
+                         hx-get="/cdma-code-analysis"
+                         hx-trigger="cdma-simulation-complete from:body"
+                         hx-target="#result-cdma-module6"
+                         hx-swap="innerHTML">(właściwości kodów)</div>
+                </div>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn-main">Uruchom Symulację CDMA</button>
+                 <button type="button" class="btn-reset" onclick="resetCdmaForm()">Reset CDMA</button>
+            </div>
+        </form>
+        <div id="cdma-simulation-status"></div>
         
         <div id="results"></div>
          
@@ -152,6 +304,53 @@
                     toggleModule(cb, cb.closest('.card').id);
                 });
             });
+
+            function resetAllForms() {
+                // Reset main form
+                document.querySelector('form[hx-post="/simulate"]').reset();
+                // Reset CDMA form
+                document.getElementById('cdmaForm').reset();
+
+                // Clear result areas for main simulation
+                document.getElementById('result-generator').innerHTML = '(wynik pojawi się po uruchomieniu)';
+                document.getElementById('result-encoder').innerHTML = '(wynik pojawi się po uruchomieniu)';
+                document.getElementById('result-error').innerHTML = '(wynik pojawi się po uruchomieniu)';
+                document.getElementById('result-decoder').innerHTML = '(wynik pojawi się po uruchomieniu)';
+                document.getElementById('result-ber').innerHTML = '(wynik pojawi się po uruchomieniu)';
+                document.getElementById('result-autocorrelation').innerHTML = '(wynik pojawi się po uruchomieniu)';
+                document.getElementById('simulation-status').innerHTML = '';
+
+                // Clear result areas for CDMA simulation
+                document.getElementById('result-cdma-module1').innerHTML = '(konfiguracja systemu)';
+                document.getElementById('result-cdma-module2a').innerHTML = '(nadajnik A)';
+                document.getElementById('result-cdma-module2b').innerHTML = '(nadajnik B)';
+                document.getElementById('result-cdma-module3').innerHTML = '(kanał komunikacyjny)';
+                document.getElementById('result-cdma-module4a').innerHTML = '(odbiornik A)';
+                document.getElementById('result-cdma-module4b').innerHTML = '(odbiornik B)';
+                document.getElementById('result-cdma-module5a').innerHTML = '(analiza BER A)';
+                document.getElementById('result-cdma-module5b').innerHTML = '(analiza BER B)';
+                document.getElementById('result-cdma-module6').innerHTML = '(właściwości kodów)';
+                document.getElementById('cdma-simulation-status').innerHTML = '';
+
+                // Re-apply toggle state for checkboxes in main form
+                 document.querySelectorAll('form[hx-post="/simulate"] .card-header input[type=checkbox]').forEach(function(cb) {
+                    toggleModule(cb, cb.closest('.card').id);
+                });
+            }
+
+            function resetCdmaForm() {
+                document.getElementById('cdmaForm').reset();
+                document.getElementById('result-cdma-module1').innerHTML = '(konfiguracja systemu)';
+                document.getElementById('result-cdma-module2a').innerHTML = '(nadajnik A)';
+                document.getElementById('result-cdma-module2b').innerHTML = '(nadajnik B)';
+                document.getElementById('result-cdma-module3').innerHTML = '(kanał komunikacyjny)';
+                document.getElementById('result-cdma-module4a').innerHTML = '(odbiornik A)';
+                document.getElementById('result-cdma-module4b').innerHTML = '(odbiornik B)';
+                document.getElementById('result-cdma-module5a').innerHTML = '(analiza BER A)';
+                document.getElementById('result-cdma-module5b').innerHTML = '(analiza BER B)';
+                document.getElementById('result-cdma-module6').innerHTML = '(właściwości kodów)';
+                document.getElementById('cdma-simulation-status').innerHTML = '';
+            }
         </script>
     </body>
 </html>
