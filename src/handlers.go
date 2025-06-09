@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"math" // Added import
 	"net/http"
 	"os"
 	"path/filepath"
@@ -44,6 +45,76 @@ type SimulationResults struct {
 var globalResults = &SimulationResults{}
 var latestResultFilePath string      // Path to the most recently saved result file
 var latestResultFileMutex sync.RWMutex
+
+// --- NEW: CDMA Simulation global storage ---
+// var cdmaGlobalResults = struct { // This will be replaced
+// 	sync.RWMutex
+// 	Result *simulation.CDMAResult
+// }{}
+
+type CDMASimulationState struct {
+	mutex sync.RWMutex
+
+	// Module 1: System Config (Inputs are from form, results are derived properties)
+	GlobalN     uint
+	GlobalPoly1 []uint
+	GlobalPoly2 []uint
+	Timestamp   string // General timestamp for the whole simulation set
+
+	// Module 2: Transmitters
+	// User A
+	InputTextA         string
+	SeedA1_form        uint64 // Seed for LFSR1 for User A's Gold Code from form
+	SeedA2_form        uint64 // Seed for LFSR2 for User A's Gold Code from form
+	OriginalDataStrA   string // Bit string of User A's data
+	EncodedDataStrA    string // Bit string of User A's encoded data
+	DataLengthA        int    // Length of User A's data in bits
+	GeneratedGoldCodeA string // User A's Gold Code string
+	// User B
+	InputTextB         string
+	SeedB1_form        uint64 // Seed for LFSR1 for User B's Gold Code from form
+	SeedB2_form        uint64 // Seed for LFSR2 for User B's Gold Code from form
+	OriginalDataStrB   string // Bit string of User B's data
+	EncodedDataStrB    string // Bit string of User B's encoded data
+	DataLengthB        int    // Length of User B's data in bits
+	GeneratedGoldCodeB string // User B's Gold Code string
+
+	SimulationDataLength int // Max of DataLengthA, DataLengthB
+
+	// Module 3: Channel
+	NoiseLevel_form           float64 // Noise level from form
+	TransmittedSignalAStr     string  // NEW: User A transmitted signal
+	TransmittedSignalBStr     string  // NEW: User B transmitted signal
+	CombinedSignalStr         string
+	ReceivedSignalStr         string
+	GoldCodeLength            int    // Needed for context in channel display
+	ReceivedSignalSegmentAStr string // NEW
+	ReceivedSignalSegmentBStr string // NEW
+	CorrelatedSignalAStr      string // NEW
+	CorrelatedSignalBStr      string // NEW
+
+	// Module 4: Receivers
+	// User A
+	DecodedTextA    string
+	DecodedDataStrA string
+	ErrorCountA     int
+	BER_A_str       string
+	// User B
+	DecodedTextB    string
+	DecodedDataStrB string
+	ErrorCountB     int
+	BER_B_str       string
+
+	// Module 5: Code Analysis
+	AutocorrelationPeak        int     // GoldCodeLength
+	MaxOffPeakAutocorrelationA float32 // Normalized
+	MaxOffPeakAutocorrelationB float32 // Normalized
+	CrossCorrelationAB         float32 // Normalized
+}
+
+var cdmaGlobalState = &CDMASimulationState{}
+
+// --- END NEW ---
 
 // ResponseData holds data for the response template
 type ResponseData struct {
@@ -103,6 +174,85 @@ type AutocorrelationData struct {
 	EncodedMaxOffPeak   string
 	CorruptedMaxOffPeak string
 }
+
+// --- NEW: CDMA Handler Data Structs ---
+type CDMAFormData struct { // Matches form fields
+	GoldNStr     string // Mod 1
+	GoldTaps1Str string // Mod 1
+	GoldTaps2Str string // Mod 1
+
+	TextUserAStr string // Mod 2A
+	SeedA1Str    string // Mod 2A
+	SeedA2Str    string // Mod 2A
+
+	TextUserBStr string // Mod 2B
+	SeedB1Str    string // Mod 2B
+	SeedB2Str    string // Mod 2B
+
+	SeqLengthRandomStr string // Fallback if texts are empty (common for A & B if both random)
+
+	NoiseLevelStr string // Mod 3
+}
+
+// Data structs for individual CDMA result templates (Module specific)
+type CDMASystemConfigData struct { // For Module 1 results display
+	Timestamp                  string
+	GlobalN                    uint
+	GlobalPoly1                []uint
+	GlobalPoly2                []uint
+	GeneratedGoldCodeA         string // Display part of Gold Code A
+	GeneratedGoldCodeB         string // Display part of Gold Code B
+	GoldCodeLength             int
+	MaxOffPeakAutocorrelationA float32
+	MaxOffPeakAutocorrelationB float32
+	CrossCorrelationAB         float32
+}
+
+type CDMATransmitterUserData struct { // For Module 2 results (User A or B)
+	Timestamp       string
+	UserLabel       string // "A" or "B"
+	InputText       string
+	Seed1           uint64
+	Seed2           uint64
+	OriginalDataStr string
+	EncodedDataStr  string // NEW: Encoded data string
+	DataLength      int
+	GoldCodeLength  int // For context
+}
+
+type CDMAChannelData struct { // For Module 3 results
+	Timestamp         string
+	NoiseLevel        float64
+	CombinedSignalStr string
+	ReceivedSignalStr string
+	DataBitLength     int // SimulationDataLength
+	GoldCodeLength    int
+}
+
+type CDMAReceiverUserData struct { // For Module 4 results (User A or B)
+	Timestamp                string
+	UserLabel                string // "A" or "B"
+	InputText                string // Original text
+	DecodedText              string
+	OriginalDataStr          string // For comparison if needed
+	DecodedDataStr           string
+	ErrorCount               int
+	BER_str                  string
+	DataLength               int
+	ReceivedSignalSegmentStr string // NEW: Received signal segment for this user
+	CorrelatedSignalStr      string // NEW: Correlated signal for this user
+}
+
+type CDMACodeAnalysisData struct { // For Module 5 results
+	Timestamp                  string
+	AutocorrelationPeak        int
+	MaxOffPeakAutocorrelationA float32
+	MaxOffPeakAutocorrelationB float32
+	CrossCorrelationAB         float32
+	GoldCodeLength             int // For context (same as AutocorrelationPeak)
+}
+
+// --- END NEW ---
 
 // Serve the main HTML page using a template (Exported)
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
@@ -635,22 +785,477 @@ func AutocorrelationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// --- NEW: CDMA Simulation Handlers ---
+
+// CDMASimulateHandler runs the CDMA simulation and stores results.
+func CDMASimulateHandler(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		log.Printf("CDMA Form parse error: %v", err)
+		http.Error(w, "Form parse error", http.StatusBadRequest)
+		return
+	}
+
+	formData := CDMAFormData{
+		GoldNStr:           r.FormValue("cdmaGoldN"),
+		GoldTaps1Str:       r.FormValue("cdmaGoldTaps1"),
+		GoldTaps2Str:       r.FormValue("cdmaGoldTaps2"),
+		TextUserAStr:       strings.TrimSpace(r.FormValue("cdmaTextUserA")),
+		SeedA1Str:          r.FormValue("cdmaSeedA1"),
+		SeedA2Str:          r.FormValue("cdmaSeedA2"),
+		TextUserBStr:       strings.TrimSpace(r.FormValue("cdmaTextUserB")),
+		SeedB1Str:          r.FormValue("cdmaSeedB1"),
+		SeedB2Str:          r.FormValue("cdmaSeedB2"),
+		SeqLengthRandomStr: r.FormValue("cdmaSeqLengthRandom"),
+		NoiseLevelStr:      r.FormValue("cdmaNoiseLevel"),
+	}
+	log.Printf("CDMA Simulation Form Data: %+v", formData)
+
+	// Parse Module 1 inputs
+	goldN := uint(parseIntWithDefault(formData.GoldNStr, 10, 2, 16))
+	taps1 := parseTapsWithDefault(formData.GoldTaps1Str, []uint{0, 3})
+	taps2 := parseTapsWithDefault(formData.GoldTaps2Str, []uint{0, 2, 3, 8})
+
+	// Parse Module 2 inputs
+	seedA1 := parseUint64WithDefault(formData.SeedA1Str, 1)
+	seedA2 := parseUint64WithDefault(formData.SeedA2Str, 1)
+	seedB1 := parseUint64WithDefault(formData.SeedB1Str, 2)
+	seedB2 := parseUint64WithDefault(formData.SeedB2Str, 2)
+
+	seqLengthRandomBytes := parseIntWithDefault(formData.SeqLengthRandomStr, 1, 1, 10)
+	seqLengthRandomBits := seqLengthRandomBytes * 8
+
+	// Parse Module 3 input - convert percentage to decimal
+	// Default to 100%, min 0%, max 10000% (allowing std dev up to 100.0)
+	noiseLevelPercent := parseFloatWithDefault(formData.NoiseLevelStr, 100.0, 0.0, math.MaxFloat64) // Changed maxVal to math.MaxFloat64
+	noiseLevel := noiseLevelPercent / 100.0                                                         // Convert percentage to decimal std dev
+
+	// Perform CDMA simulation
+	simResult := simulation.SimulateCDMA(
+		goldN, taps1, taps2,
+		seedA1, seedA2, formData.TextUserAStr,
+		seedB1, seedB2, formData.TextUserBStr,
+		seqLengthRandomBits,
+		noiseLevel,
+	)
+
+	// Store the percentage value for display
+	simResult.NoiseLevel = noiseLevelPercent
+
+	// Populate cdmaGlobalState (same as before)
+	cdmaGlobalState.mutex.Lock()
+	cdmaGlobalState.Timestamp = simResult.Timestamp
+	cdmaGlobalState.GlobalN = simResult.N
+	cdmaGlobalState.GlobalPoly1 = simResult.Poly1
+	cdmaGlobalState.GlobalPoly2 = simResult.Poly2
+	cdmaGlobalState.InputTextA = simResult.InputTextA
+	cdmaGlobalState.SeedA1_form = simResult.SeedA1
+	cdmaGlobalState.SeedA2_form = simResult.SeedA2
+	if simResult.OriginalDataSeqA != nil {
+		cdmaGlobalState.OriginalDataStrA = simResult.OriginalDataSeqA.String()
+	}
+	if simResult.EncodedDataSeqA != nil {
+		cdmaGlobalState.EncodedDataStrA = simResult.EncodedDataSeqA.String()
+	}
+	cdmaGlobalState.DataLengthA = simResult.DataBitLengthUserA
+	cdmaGlobalState.GeneratedGoldCodeA = simResult.GoldCodeAStr
+
+	cdmaGlobalState.InputTextB = simResult.InputTextB
+	cdmaGlobalState.SeedB1_form = simResult.SeedB1
+	cdmaGlobalState.SeedB2_form = simResult.SeedB2
+	if simResult.OriginalDataSeqB != nil {
+		cdmaGlobalState.OriginalDataStrB = simResult.OriginalDataSeqB.String()
+	}
+	if simResult.EncodedDataSeqB != nil {
+		cdmaGlobalState.EncodedDataStrB = simResult.EncodedDataSeqB.String()
+	}
+	cdmaGlobalState.DataLengthB = simResult.DataBitLengthUserB
+	cdmaGlobalState.GeneratedGoldCodeB = simResult.GoldCodeBStr
+
+	cdmaGlobalState.SimulationDataLength = simResult.SimulationDataLength
+	cdmaGlobalState.NoiseLevel_form = simResult.NoiseLevel
+	cdmaGlobalState.TransmittedSignalAStr = simResult.TransmittedSignalAStr
+	cdmaGlobalState.TransmittedSignalBStr = simResult.TransmittedSignalBStr
+	cdmaGlobalState.CombinedSignalStr = simResult.CombinedSignalStr
+	cdmaGlobalState.ReceivedSignalStr = simResult.ReceivedSignalStr
+	cdmaGlobalState.GoldCodeLength = simResult.GoldCodeLength
+	cdmaGlobalState.ReceivedSignalSegmentAStr = simResult.ReceivedSignalSegmentAStr
+	cdmaGlobalState.ReceivedSignalSegmentBStr = simResult.ReceivedSignalSegmentBStr
+	cdmaGlobalState.CorrelatedSignalAStr = simResult.CorrelatedSignalUserAStr // NEW
+	cdmaGlobalState.CorrelatedSignalBStr = simResult.CorrelatedSignalUserBStr // NEW
+
+	cdmaGlobalState.DecodedTextA = simResult.DecodedTextA
+	if simResult.DecodedDataSeqA != nil {
+		cdmaGlobalState.DecodedDataStrA = simResult.DecodedDataSeqA.String()
+	}
+	cdmaGlobalState.ErrorCountA = simResult.ErrorCountA
+	cdmaGlobalState.BER_A_str = fmt.Sprintf("%.2f%%", simResult.BER_A*100)
+
+	cdmaGlobalState.DecodedTextB = simResult.DecodedTextB
+	if simResult.DecodedDataSeqB != nil {
+		cdmaGlobalState.DecodedDataStrB = simResult.DecodedDataSeqB.String()
+	}
+	cdmaGlobalState.ErrorCountB = simResult.ErrorCountB
+	cdmaGlobalState.BER_B_str = fmt.Sprintf("%.2f%%", simResult.BER_B*100)
+
+	cdmaGlobalState.AutocorrelationPeak = simResult.AutocorrelationPeak
+	cdmaGlobalState.MaxOffPeakAutocorrelationA = simResult.MaxOffPeakAutocorrelationA
+	cdmaGlobalState.MaxOffPeakAutocorrelationB = simResult.MaxOffPeakAutocorrelationB
+	cdmaGlobalState.CrossCorrelationAB = simResult.CrossCorrelationAB
+	cdmaGlobalState.mutex.Unlock()
+
+	log.Printf("CDMA Simulation completed. Global state updated. SimDataLen: %d", simResult.SimulationDataLength)
+
+	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("HX-Trigger", "cdma-simulation-complete")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `<div class="success-message">Symulacja CDMA zakończona pomyślnie! Czas: %s</div>`, time.Now().Format("15:04:05"))
+}
+
+// Add new BER handlers for individual users
+func CDMABERAResultsHandler(w http.ResponseWriter, r *http.Request) {
+	cdmaGlobalState.mutex.RLock()
+	defer cdmaGlobalState.mutex.RUnlock()
+	if cdmaGlobalState.Timestamp == "" {
+		http.Error(w, "Uruchom symulację CDMA.", http.StatusBadRequest)
+		return
+	}
+	data := struct {
+		Timestamp   string
+		UserLabel   string
+		BER_str     string
+		ErrorCount  int
+		TotalBits   int
+		InputText   string
+		DecodedText string
+	}{
+		Timestamp:   cdmaGlobalState.Timestamp,
+		UserLabel:   "A",
+		BER_str:     cdmaGlobalState.BER_A_str,
+		ErrorCount:  cdmaGlobalState.ErrorCountA,
+		TotalBits:   cdmaGlobalState.DataLengthA,
+		InputText:   cdmaGlobalState.InputTextA,
+		DecodedText: cdmaGlobalState.DecodedTextA,
+	}
+
+	tmpl, err := template.ParseFiles("templates/cdma_ber_user_result.html")
+	if err != nil {
+		log.Printf("CDMABERAResultsHandler: Template error: %v", err)
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing CDMABERAResultsHandler template: %v", err)
+		http.Error(w, "Template execution error", http.StatusInternalServerError)
+	}
+}
+
+func CDMABERBResultsHandler(w http.ResponseWriter, r *http.Request) {
+	cdmaGlobalState.mutex.RLock()
+	defer cdmaGlobalState.mutex.RUnlock()
+	if cdmaGlobalState.Timestamp == "" {
+		http.Error(w, "Uruchom symulację CDMA.", http.StatusBadRequest)
+		return
+	}
+	data := struct {
+		Timestamp   string
+		UserLabel   string
+		BER_str     string
+		ErrorCount  int
+		TotalBits   int
+		InputText   string
+		DecodedText string
+	}{
+		Timestamp:   cdmaGlobalState.Timestamp,
+		UserLabel:   "B",
+		BER_str:     cdmaGlobalState.BER_B_str,
+		ErrorCount:  cdmaGlobalState.ErrorCountB,
+		TotalBits:   cdmaGlobalState.DataLengthB,
+		InputText:   cdmaGlobalState.InputTextB,
+		DecodedText: cdmaGlobalState.DecodedTextB,
+	}
+
+	tmpl, err := template.ParseFiles("templates/cdma_ber_user_result.html")
+	if err != nil {
+		log.Printf("CDMABERBResultsHandler: Template error: %v", err)
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing CDMABERBResultsHandler template: %v", err)
+		http.Error(w, "Template execution error", http.StatusInternalServerError)
+	}
+}
+
+// CDMASystemConfigHandler returns system configuration results for CDMA
+func CDMASystemConfigHandler(w http.ResponseWriter, r *http.Request) {
+	cdmaGlobalState.mutex.RLock()
+	defer cdmaGlobalState.mutex.RUnlock()
+	if cdmaGlobalState.Timestamp == "" {
+		http.Error(w, "Uruchom symulację CDMA.", http.StatusBadRequest)
+		return
+	}
+
+	data := CDMASystemConfigData{
+		Timestamp:                  cdmaGlobalState.Timestamp,
+		GlobalN:                    cdmaGlobalState.GlobalN,
+		GlobalPoly1:                cdmaGlobalState.GlobalPoly1,
+		GlobalPoly2:                cdmaGlobalState.GlobalPoly2,
+		GeneratedGoldCodeA:         truncateString(cdmaGlobalState.GeneratedGoldCodeA, 64),
+		GeneratedGoldCodeB:         truncateString(cdmaGlobalState.GeneratedGoldCodeB, 64),
+		GoldCodeLength:             cdmaGlobalState.GoldCodeLength,
+		MaxOffPeakAutocorrelationA: cdmaGlobalState.MaxOffPeakAutocorrelationA,
+		MaxOffPeakAutocorrelationB: cdmaGlobalState.MaxOffPeakAutocorrelationB,
+		CrossCorrelationAB:         cdmaGlobalState.CrossCorrelationAB,
+	}
+
+	tmpl, err := template.ParseFiles("templates/cdma_system_config_result.html")
+	if err != nil {
+		log.Printf("CDMASystemConfigHandler: Template error: %v", err)
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing CDMASystemConfigHandler template: %v", err)
+		http.Error(w, "Template execution error", http.StatusInternalServerError)
+	}
+}
+
+// CDMAChannelResultsHandler returns channel results for CDMA
+func CDMAChannelResultsHandler(w http.ResponseWriter, r *http.Request) {
+	cdmaGlobalState.mutex.RLock()
+	defer cdmaGlobalState.mutex.RUnlock()
+	if cdmaGlobalState.Timestamp == "" {
+		http.Error(w, "Uruchom symulację CDMA.", http.StatusBadRequest)
+		return
+	}
+
+	data := CDMAChannelData{
+		Timestamp:         cdmaGlobalState.Timestamp,
+		NoiseLevel:        cdmaGlobalState.NoiseLevel_form,
+		CombinedSignalStr: cdmaGlobalState.CombinedSignalStr,
+		ReceivedSignalStr: cdmaGlobalState.ReceivedSignalStr,
+		DataBitLength:     cdmaGlobalState.SimulationDataLength,
+		GoldCodeLength:    cdmaGlobalState.GoldCodeLength,
+	}
+
+	tmpl, err := template.ParseFiles("templates/cdma_channel_result.html")
+	if err != nil {
+		log.Printf("CDMAChannelResultsHandler: Template error: %v", err)
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing CDMAChannelResultsHandler template: %v", err)
+		http.Error(w, "Template execution error", http.StatusInternalServerError)
+	}
+}
+
+// CDMAReceiverAResultsHandler returns receiver results for User A
+func CDMAReceiverAResultsHandler(w http.ResponseWriter, r *http.Request) {
+	cdmaGlobalState.mutex.RLock()
+	defer cdmaGlobalState.mutex.RUnlock()
+	if cdmaGlobalState.Timestamp == "" {
+		http.Error(w, "Uruchom symulację CDMA.", http.StatusBadRequest)
+		return
+	}
+
+	data := CDMAReceiverUserData{
+		Timestamp:                cdmaGlobalState.Timestamp,
+		UserLabel:                "A",
+		InputText:                cdmaGlobalState.InputTextA,
+		DecodedText:              cdmaGlobalState.DecodedTextA,
+		OriginalDataStr:          cdmaGlobalState.OriginalDataStrA,
+		DecodedDataStr:           cdmaGlobalState.DecodedDataStrA,
+		ErrorCount:               cdmaGlobalState.ErrorCountA,
+		BER_str:                  cdmaGlobalState.BER_A_str,
+		DataLength:               cdmaGlobalState.DataLengthA,
+		ReceivedSignalSegmentStr: cdmaGlobalState.ReceivedSignalSegmentAStr,
+		CorrelatedSignalStr:      cdmaGlobalState.CorrelatedSignalAStr, // NEW
+	}
+
+	tmpl, err := template.ParseFiles("templates/cdma_receiver_user_result.html")
+	if err != nil {
+		log.Printf("CDMAReceiverAResultsHandler: Template error: %v", err)
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing CDMAReceiverAResultsHandler template: %v", err)
+		http.Error(w, "Template execution error", http.StatusInternalServerError)
+	}
+}
+
+// CDMAReceiverBResultsHandler returns receiver results for User B
+func CDMAReceiverBResultsHandler(w http.ResponseWriter, r *http.Request) {
+	cdmaGlobalState.mutex.RLock()
+	defer cdmaGlobalState.mutex.RUnlock()
+	if cdmaGlobalState.Timestamp == "" {
+		http.Error(w, "Uruchom symulację CDMA.", http.StatusBadRequest)
+		return
+	}
+
+	data := CDMAReceiverUserData{
+		Timestamp:                cdmaGlobalState.Timestamp,
+		UserLabel:                "B",
+		InputText:                cdmaGlobalState.InputTextB,
+		DecodedText:              cdmaGlobalState.DecodedTextB,
+		OriginalDataStr:          cdmaGlobalState.OriginalDataStrB,
+		DecodedDataStr:           cdmaGlobalState.DecodedDataStrB,
+		ErrorCount:               cdmaGlobalState.ErrorCountB,
+		BER_str:                  cdmaGlobalState.BER_B_str,
+		DataLength:               cdmaGlobalState.DataLengthB,
+		ReceivedSignalSegmentStr: cdmaGlobalState.ReceivedSignalSegmentBStr,
+		CorrelatedSignalStr:      cdmaGlobalState.CorrelatedSignalBStr, // NEW
+	}
+
+	tmpl, err := template.ParseFiles("templates/cdma_receiver_user_result.html")
+	if err != nil {
+		log.Printf("CDMAReceiverBResultsHandler: Template error: %v", err)
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing CDMAReceiverBResultsHandler template: %v", err)
+		http.Error(w, "Template execution error", http.StatusInternalServerError)
+	}
+}
+
+// CDMATransmitterAResultsHandler returns results for CDMA Transmitter User A
+func CDMATransmitterAResultsHandler(w http.ResponseWriter, r *http.Request) {
+	cdmaGlobalState.mutex.RLock()
+	defer cdmaGlobalState.mutex.RUnlock()
+	if cdmaGlobalState.Timestamp == "" {
+		http.Error(w, "Uruchom symulację CDMA.", http.StatusBadRequest)
+		return
+	}
+	data := struct {
+		Timestamp            string
+		UserLabel            string
+		InputText            string
+		Seed1                uint64
+		Seed2                uint64
+		OriginalDataStr      string
+		EncodedDataStr       string
+		DataLength           int
+		TransmittedSignalStr string // Added field
+	}{
+		Timestamp:            cdmaGlobalState.Timestamp,
+		UserLabel:            "A",
+		InputText:            cdmaGlobalState.InputTextA,
+		Seed1:                cdmaGlobalState.SeedA1_form,
+		Seed2:                cdmaGlobalState.SeedA2_form,
+		OriginalDataStr:      cdmaGlobalState.OriginalDataStrA,
+		EncodedDataStr:       cdmaGlobalState.EncodedDataStrA,
+		DataLength:           cdmaGlobalState.DataLengthA,
+		TransmittedSignalStr: cdmaGlobalState.TransmittedSignalAStr, // Populate added field
+	}
+	tmpl, err := template.ParseFiles("templates/cdma_transmitter_user_result.html")
+	if err != nil {
+		log.Printf("CDMATransmitterAResultsHandler: Template error: %v", err)
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing CDMATransmitterAResultsHandler template: %v", err)
+		http.Error(w, "Template execution error", http.StatusInternalServerError)
+	}
+}
+
+// CDMATransmitterBResultsHandler returns results for CDMA Transmitter User B
+func CDMATransmitterBResultsHandler(w http.ResponseWriter, r *http.Request) {
+	cdmaGlobalState.mutex.RLock()
+	defer cdmaGlobalState.mutex.RUnlock()
+	if cdmaGlobalState.Timestamp == "" {
+		http.Error(w, "Uruchom symulację CDMA.", http.StatusBadRequest)
+		return
+	}
+	data := struct {
+		Timestamp            string
+		UserLabel            string
+		InputText            string
+		Seed1                uint64
+		Seed2                uint64
+		OriginalDataStr      string
+		EncodedDataStr       string
+		DataLength           int
+		TransmittedSignalStr string // Added field
+	}{
+		Timestamp:            cdmaGlobalState.Timestamp,
+		UserLabel:            "B",
+		InputText:            cdmaGlobalState.InputTextB,
+		Seed1:                cdmaGlobalState.SeedB1_form,
+		Seed2:                cdmaGlobalState.SeedB2_form,
+		OriginalDataStr:      cdmaGlobalState.OriginalDataStrB,
+		EncodedDataStr:       cdmaGlobalState.EncodedDataStrB,
+		DataLength:           cdmaGlobalState.DataLengthB,
+		TransmittedSignalStr: cdmaGlobalState.TransmittedSignalBStr, // Populate added field
+	}
+	tmpl, err := template.ParseFiles("templates/cdma_transmitter_user_result.html")
+	if err != nil {
+		log.Printf("CDMATransmitterBResultsHandler: Template error: %v", err)
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing CDMATransmitterBResultsHandler template: %v", err)
+		http.Error(w, "Template execution error", http.StatusInternalServerError)
+	}
+}
+
+// CDMACodeAnalysisHandler returns code analysis results for CDMA
+func CDMACodeAnalysisHandler(w http.ResponseWriter, r *http.Request) {
+	cdmaGlobalState.mutex.RLock()
+	defer cdmaGlobalState.mutex.RUnlock()
+	if cdmaGlobalState.Timestamp == "" {
+		http.Error(w, "Uruchom symulację CDMA.", http.StatusBadRequest)
+		return
+	}
+
+	data := CDMACodeAnalysisData{
+		Timestamp:                  cdmaGlobalState.Timestamp,
+		AutocorrelationPeak:        cdmaGlobalState.AutocorrelationPeak,
+		MaxOffPeakAutocorrelationA: cdmaGlobalState.MaxOffPeakAutocorrelationA,
+		MaxOffPeakAutocorrelationB: cdmaGlobalState.MaxOffPeakAutocorrelationB,
+		CrossCorrelationAB:         cdmaGlobalState.CrossCorrelationAB,
+		GoldCodeLength:             cdmaGlobalState.GoldCodeLength,
+	}
+
+	tmpl, err := template.ParseFiles("templates/cdma_code_analysis_result.html")
+	if err != nil {
+		log.Printf("CDMACodeAnalysisHandler: Template error: %v", err)
+		http.Error(w, "Template error", http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing CDMACodeAnalysisHandler template: %v", err)
+		http.Error(w, "Template execution error", http.StatusInternalServerError)
+	}
+}
+
+// Helper function to truncate string for display
+func truncateString(s string, maxLength int) string {
+	if len(s) <= maxLength {
+		return s
+	}
+	if maxLength <= 3 { // Not enough space for "..."
+		return s[:maxLength]
+	}
+	return s[:maxLength-3] + "..."
+}
+
 // Helper function to parse comma-separated taps
 func parseTaps(tapsStr string) []uint {
+	tapsStr = strings.TrimSpace(tapsStr)
 	if tapsStr == "" {
 		return nil
 	}
-
 	parts := strings.Split(tapsStr, ",")
 	taps := make([]uint, 0, len(parts))
-
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if tap, err := strconv.Atoi(part); err == nil && tap >= 0 {
-			taps = append(taps, uint(tap))
+	for _, p := range parts {
+		if val, err := strconv.Atoi(strings.TrimSpace(p)); err == nil {
+			taps = append(taps, uint(val))
 		}
 	}
-
 	return taps
 }
 
@@ -672,4 +1277,50 @@ func bitsToASCII(bits string) string {
 		sb.WriteByte(b)
 	}
 	return sb.String()
+}
+
+// --- Helper functions for parsing with defaults ---
+func parseIntWithDefault(valStr string, defaultVal int, minVal int, maxVal int) int {
+	if val, err := strconv.Atoi(strings.TrimSpace(valStr)); err == nil {
+		if val >= minVal && val <= maxVal {
+			return val
+		}
+	}
+	return defaultVal
+}
+
+func parseUint64WithDefault(valStr string, defaultVal uint64) uint64 {
+	trimmedValStr := strings.TrimSpace(valStr)
+	if trimmedValStr == "" { // Handle empty string explicitly if needed, or rely on ParseUint failure
+		return defaultVal
+	}
+	if val, err := strconv.ParseUint(trimmedValStr, 10, 64); err == nil {
+		// It's common for seeds to be non-zero, but 0 can be a valid state for some LFSRs if handled.
+		// For simplicity, let's allow 0 if parsed correctly.
+		// If a strict non-zero policy is needed, add '&& val > 0'
+		return val
+	}
+	return defaultVal
+}
+
+func parseFloatWithDefault(valStr string, defaultVal float64, minVal float64, maxVal float64) float64 {
+	if val, err := strconv.ParseFloat(strings.TrimSpace(valStr), 64); err == nil {
+		if val >= minVal && val <= maxVal {
+			return val
+		}
+	}
+	return defaultVal
+}
+
+func parseTapsWithDefault(tapsStr string, defaultTaps []uint) []uint {
+	trimmedTapsStr := strings.TrimSpace(tapsStr)
+	if trimmedTapsStr == "" {
+		return defaultTaps
+	}
+	parsed := parseTaps(trimmedTapsStr) // parseTaps already handles trimming spaces around commas and parts
+	if len(parsed) == 0 {
+		// This case might occur if tapsStr is not empty but contains no valid numbers, e.g., "," or "a,b"
+		return defaultTaps
+	}
+	return parsed
 }

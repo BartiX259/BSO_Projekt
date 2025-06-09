@@ -1,0 +1,21 @@
+<div class="module-result">
+    <div class="result-label">Odbiornik Użytkownika {{.UserLabel}} - wynik:</div>
+    {{if .InputText}}
+    <div style="margin-top: 8px; font-size: 0.9em; color: #666;">
+        Oryginalny tekst: <strong>"{{.InputText}}"</strong><br>
+        Zdekodowany tekst: <strong>"{{.DecodedText}}"</strong>
+    </div>
+    {{else}}
+    <div style="margin-top: 8px; font-size: 0.9em; color: #666;">
+        Tryb: <strong>dane losowe</strong>
+    </div>
+    <div class="result-label" style="margin-top: 12px;">Zdekodowane bity:</div>
+    <div class="result-value">{{if gt (len .DecodedDataStr) 64}}{{printf "%.64s" .DecodedDataStr}}...{{else}}{{.DecodedDataStr}}{{end}}</div>
+    {{end}}
+
+    <div class="result-label" style="margin-top: 12px;">Fragment odebranego sygnału:</div>
+    <div class="result-value result-value-small">{{if .ReceivedSignalSegmentStr}}{{.ReceivedSignalSegmentStr}}{{else}}(brak danych){{end}}</div>
+
+    <div class="result-label" style="margin-top: 12px;">Sygnał po korelacji:</div>
+    <div class="result-value result-value-small">{{if .CorrelatedSignalStr}}{{.CorrelatedSignalStr}}{{else}}(brak danych){{end}}</div>
+</div>

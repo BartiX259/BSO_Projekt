@@ -1,0 +1,18 @@
+<div class="module-result">
+    <div class="result-label">Konfiguracja Systemu CDMA - wynik:</div>
+    <div style="margin-top: 8px; font-size: 0.9em; color: #666;">
+        Długość rejestru N: <strong>{{.GlobalN}}</strong><br>
+        LFSR1 Taps: {{.GlobalPoly1}}<br>
+        LFSR2 Taps: {{.GlobalPoly2}}<br>
+        Długość kodów Golda: <strong>{{.GoldCodeLength}} bitów</strong>
+    </div>
+    <div class="result-label" style="margin-top: 12px;">Wygenerowane Kody Golda:</div>
+    <div class="result-value">Kod A: {{.GeneratedGoldCodeA}}</div>
+    <div class="result-value" style="margin-top: 4px;">Kod B: {{.GeneratedGoldCodeB}}</div>
+    <div class="result-label" style="margin-top: 12px;">Właściwości Kodów:</div>
+    <div style="margin-top: 8px; font-size: 0.9em; color: #666;">
+        Max Autokorelacja A (poza szczytem): <strong>{{printf "%.4f" .MaxOffPeakAutocorrelationA}}</strong><br>
+        Max Autokorelacja B (poza szczytem): <strong>{{printf "%.4f" .MaxOffPeakAutocorrelationB}}</strong><br>
+        Korelacja Wzajemna A-B: <strong>{{printf "%.4f" .CrossCorrelationAB}}</strong>
+    </div>
+</div>

@@ -42,3 +42,46 @@ func MaxAbsoluteOffPeak(values []float32) float32 {
 	}
 	return maxVal
 }
+
+// BitsToSignal converts a BitSequence (0s and 1s) to a slice of float32 (+1.0 for 1, -1.0 for 0).
+func BitsToSignal(seq BitSequence) []float32 {
+	L := seq.Len()
+	signal := make([]float32, L)
+	for i := 0; i < L; i++ {
+		if seq.Get(i) == 1 {
+			signal[i] = 1.0
+		} else {
+			signal[i] = -1.0
+		}
+	}
+	return signal
+}
+
+// CalculateNormalizedCrossCorrelation calculates the normalized cross-correlation between two signals.
+// Signals are expected to be slices of +1/-1 values.
+// Returns a value between -1 and 1.
+func CalculateNormalizedCrossCorrelation(signal1 []float32, signal2 []float32) float32 {
+	if len(signal1) == 0 || len(signal1) != len(signal2) {
+		panic("Signals must be non-empty and of equal length for cross-correlation.")
+	}
+	L := len(signal1)
+	sum := float32(0.0)
+	for i := 0; i < L; i++ {
+		sum += signal1[i] * signal2[i]
+	}
+	return sum / float32(L)
+}
+
+// CalculateCorrelationSum calculates the sum part of the correlation: sum(signal1[i] * signal2[i]).
+// This is used in the decoding step for CDMA.
+func CalculateCorrelationSum(signal1 []float32, signal2 []float32) float32 {
+	if len(signal1) == 0 || len(signal1) != len(signal2) {
+		panic("Signals must be non-empty and of equal length for correlation sum.")
+	}
+	L := len(signal1)
+	sum := float32(0.0)
+	for i := 0; i < L; i++ {
+		sum += signal1[i] * signal2[i]
+	}
+	return sum
+}
