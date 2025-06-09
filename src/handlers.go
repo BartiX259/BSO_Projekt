@@ -715,9 +715,9 @@ func CDMASimulateHandler(w http.ResponseWriter, r *http.Request) {
 		NoiseLevelStr:      r.FormValue("cdmaNoiseLevel"),
 	}
 
-	goldN := uint(parseIntWithDefault(formData.GoldNStr, 10, 2, 16))
+	goldN := uint(parseIntWithDefault(formData.GoldNStr, 4, 2, 16))
 	taps1 := parseTapsWithDefault(formData.GoldTaps1Str, []uint{0, 3})
-	taps2 := parseTapsWithDefault(formData.GoldTaps2Str, []uint{0, 2, 3, 8})
+	taps2 := parseTapsWithDefault(formData.GoldTaps2Str, []uint{0, 2, 3})
 
 	seedA1 := parseUint64WithDefault(formData.SeedA1Str, 1)
 	seedA2 := parseUint64WithDefault(formData.SeedA2Str, 1)
