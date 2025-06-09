@@ -2,7 +2,7 @@ package simulation
 
 import "math"
 
-// CalculatePeriodicAutocorrelation calculates the periodic autocorrelation of a bit sequence.
+// Calculates the periodic autocorrelation of a bit sequence.
 // Returns an array of correlation values for shifts 0 to L-1.
 // Values are normalized between -1 and 1.
 func CalculatePeriodicAutocorrelation(seq BitSequence) []float32 {

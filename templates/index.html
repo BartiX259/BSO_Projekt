@@ -14,16 +14,50 @@
         <form hx-post="/simulate" 
             hx-target="#simulation-status"
             hx-swap="innerHTML">
+            <div class="actions">
+                <button type="submit" class="btn-main">Uruchom Symulację</button>
+                <button type="reset" class="btn-reset">Reset Konfiguracji</button>
+            </div>
             <div class="modules-grid responsive-grid">
                 <div class="card" id="card-generator">
                     <div class="card-header"><span class="icon">📋</span>Dane Wejściowe</div>
                     <div class="card-config">
-                        <label>Tekst do zakodowania:
+                        <label>Typ danych wejściowych:
+                            <select name="seqType" id="seqTypeSelect">
+                                <option value="random">Losowe Bity</option>
+                                <option value="random-text">Losowy Tekst</option>
+                                <option value="text">Tekst</option>
+                            </select>
+                        </label>
+                    
+                        <label id="textInputLabel">Tekst do zakodowania:
                             <input type="text" name="seqText" placeholder="np. hello world">
                         </label>
-                        <label>Długość losowej sekwencji:
+                    
+                        <label id="lengthInputLabel">Długość losowej sekwencji:
                             <input type="number" name="seqLength" value="64" min="1" max="256">
                         </label>
+                        
+                        <script>
+                            const select = document.getElementById('seqTypeSelect');
+                            const textLabel = document.getElementById('textInputLabel');
+                            const lengthLabel = document.getElementById('lengthInputLabel');
+                        
+                            function updateVisibility() {
+                                console.log(select.value)
+                                if (select.value.includes('random')) {
+                                    textLabel.style.display = 'none';
+                                    lengthLabel.style.display = 'block';
+                                } else {
+                                    textLabel.style.display = 'block';
+                                    lengthLabel.style.display = 'none';
+                                }
+                            }
+                        
+                            // Wywołaj funkcję na starcie i po zmianie
+                            updateVisibility();
+                            select.addEventListener('change', updateVisibility);
+                        </script>
                     </div>
                     <div class="card-result" 
                         id="result-generator"
@@ -126,13 +160,9 @@
                         hx-swap="innerHTML">(wynik pojawi się po uruchomieniu)</div>
                 </div>
             </div>
-            <div class="actions">
-                <button type="submit" class="btn-main">Uruchom Symulację</button>
-                <button type="reset" class="btn-reset">Reset Konfiguracji</button>
-            </div>
         </form>
         
-        <div id="simulation-status"></div>
+        <div id="simulation-status" style="margin-bottom: 50px;"></div>
         
         <div id="results"></div>
          

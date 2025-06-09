@@ -79,7 +79,7 @@ type ErrorData struct {
 type DecoderData struct {
 	DecodedSequence string
 	DecoderType     string
-	DecodedASCII    string // NEW: ASCII representation
+	DecodedASCII    string
 }
 
 // BERData holds data for BER template
@@ -89,8 +89,8 @@ type BERData struct {
 	TotalBits        int
 	OriginalSequence string
 	DecodedSequence  string
-	OriginalASCII    string // NEW: ASCII representation of original
-	DecodedASCII     string // NEW: ASCII representation of decoded
+	OriginalASCII    string
+	DecodedASCII     string
 }
 
 // AutocorrelationData holds data for autocorrelation template
@@ -129,6 +129,7 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Content-Type: %s", r.Header.Get("Content-Type"))
 
 	// Parse form data with better error handling
+	seqType := strings.TrimSpace(r.FormValue("seqType"))
 	seqText := strings.TrimSpace(r.FormValue("seqText"))
 	seqLengthStr := strings.TrimSpace(r.FormValue("seqLength"))
 	errorRateStr := strings.TrimSpace(r.FormValue("errorRate"))
@@ -138,12 +139,11 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	goldTaps2Str := strings.TrimSpace(r.FormValue("goldTaps2"))
 	decoderType := strings.TrimSpace(r.FormValue("decoderType"))
 
-	// --- NEW: Parse module enable checkboxes ---
+	// Parse module enable checkboxes
 	errorEnabled := r.FormValue("errorEnabled") == "on"
 	decoderEnabled := r.FormValue("decoderEnabled") == "on"
 	berEnabled := r.FormValue("berEnabled") == "on"
 	autocorrEnabled := r.FormValue("autocorrEnabled") == "on"
-	// --- END NEW ---
 
 	log.Printf("seqText: '%s'", seqText)
 	log.Printf("seqLength: '%s'", seqLengthStr)
@@ -157,7 +157,7 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Generate or parse bit sequence
 	var bitSeq *simulation.BitSequence
-	if seqText != "" {
+	if seqType == "text" {
 		bitSeq = simulation.StringAsSequence(seqText)
 		log.Printf("Using text input: '%s'", seqText)
 	} else {
@@ -167,7 +167,13 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 				seqLength = parsed
 			}
 		}
-		bitSeq = simulation.RandomSequence(seqLength)
+		if seqType == "random-text" {
+			seqType = "text"
+			seqText = simulation.RandomText(seqLength)
+			bitSeq = simulation.StringAsSequence(seqText)
+		} else {
+			bitSeq = simulation.RandomSequence(seqLength)
+		}
 		log.Printf("Generated random sequence of length: %d", seqLength)
 	}
 
@@ -224,7 +230,7 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	seed2 := uint64(0b1010101010)
 	goldCode := simulation.GenerateGoldCode(uint(n), taps1, seed1, taps2, seed2)
 
-	// --- NEW: Conditional simulation pipeline ---
+	// Conditional simulation pipeline
 	var encoded *simulation.BitSequence
 	if goldCode != nil {
 		encodedTmp := simulation.EncodeWithGold(*bitSeq, *goldCode)
@@ -283,7 +289,6 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 			corruptedAutocorr = simulation.MaxAbsoluteOffPeak(simulation.CalculatePeriodicAutocorrelation(*corrupted))
 		}
 	}
-	// --- END NEW ---
 
 	// Store results globally for other handlers to access
 	globalResults.mutex.Lock()
@@ -294,7 +299,11 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	globalResults.Decoded = decoded
 	globalResults.BER = ber
 	globalResults.ErrorCount = errorCount
-	globalResults.InputText = seqText
+	if seqType == "text" {
+		globalResults.InputText = seqText
+	} else {
+		globalResults.InputText = ""
+	}
 	globalResults.ErrorType = errorType
 	globalResults.ErrorRate = errorRate
 	globalResults.ErrorsIntroduced = errorsIntroduced
