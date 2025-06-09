@@ -2,12 +2,12 @@ package simulation
 
 // Encodes data with gold code
 func EncodeWithGold(dataSequence BitSequence, goldCode BitSequence) *BitSequence {
-	if dataSequence.length > goldCode.length {
-		panic("Data sequence length higher than gold code length.")
-	}
+	// if dataSequence.length > goldCode.length {
+	// 	panic("Data sequence length higher than gold code length.")
+	// }
 	encodedSequence := NewBitSequence(dataSequence.length)
 	for i := range dataSequence.length {
-		nextBit := dataSequence.Get(i) ^ goldCode.Get(i)
+		nextBit := dataSequence.Get(i) ^ goldCode.Get(i%goldCode.length)
 		encodedSequence.Set(i, nextBit)
 	}
 	return encodedSequence

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
-	"math" // Added import
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,26 +14,23 @@ import (
 	"github.com/BartiX259/BSO_Projekt/src/simulation"
 )
 
-// Global simulation results storage
 type SimulationResults struct {
-	Original         *simulation.BitSequence
-	GoldCode         *simulation.BitSequence
-	Encoded          *simulation.BitSequence
-	Corrupted        *simulation.BitSequence
-	Decoded          *simulation.BitSequence
-	BER              float32
-	ErrorCount       int
-	InputText        string
-	ErrorType        string
-	ErrorRate        float64
-	ErrorsIntroduced int
-	Timestamp        string
-	// Add user parameters
-	GoldN       int
-	GoldTaps1   []uint
-	GoldTaps2   []uint
-	DecoderType string
-	// Add autocorrelation analysis
+	Original          *simulation.BitSequence
+	GoldCode          *simulation.BitSequence
+	Encoded           *simulation.BitSequence
+	Corrupted         *simulation.BitSequence
+	Decoded           *simulation.BitSequence
+	BER               float32
+	ErrorCount        int
+	InputText         string
+	ErrorType         string
+	ErrorRate         float64
+	ErrorsIntroduced  int
+	Timestamp         string
+	GoldN             int
+	GoldTaps1         []uint
+	GoldTaps2         []uint
+	DecoderType       string
 	OriginalAutocorr  float32
 	EncodedAutocorr   float32
 	CorruptedAutocorr float32
@@ -42,75 +39,61 @@ type SimulationResults struct {
 
 var globalResults = &SimulationResults{}
 
-// --- NEW: CDMA Simulation global storage ---
-// var cdmaGlobalResults = struct { // This will be replaced
-// 	sync.RWMutex
-// 	Result *simulation.CDMAResult
-// }{}
-
 type CDMASimulationState struct {
 	mutex sync.RWMutex
 
-	// Module 1: System Config (Inputs are from form, results are derived properties)
 	GlobalN     uint
 	GlobalPoly1 []uint
 	GlobalPoly2 []uint
-	Timestamp   string // General timestamp for the whole simulation set
+	Timestamp   string
 
-	// Module 2: Transmitters
-	// User A
 	InputTextA         string
-	SeedA1_form        uint64 // Seed for LFSR1 for User A's Gold Code from form
-	SeedA2_form        uint64 // Seed for LFSR2 for User A's Gold Code from form
-	OriginalDataStrA   string // Bit string of User A's data
-	EncodedDataStrA    string // Bit string of User A's encoded data
-	DataLengthA        int    // Length of User A's data in bits
-	GeneratedGoldCodeA string // User A's Gold Code string
-	// User B
+	SeedA1_form        uint64
+	SeedA2_form        uint64
+	OriginalDataStrA   string
+	EncodedDataStrA    string
+	DataLengthA        int
+	GeneratedGoldCodeA string
+
 	InputTextB         string
-	SeedB1_form        uint64 // Seed for LFSR1 for User B's Gold Code from form
-	SeedB2_form        uint64 // Seed for LFSR2 for User B's Gold Code from form
-	OriginalDataStrB   string // Bit string of User B's data
-	EncodedDataStrB    string // Bit string of User B's encoded data
-	DataLengthB        int    // Length of User B's data in bits
-	GeneratedGoldCodeB string // User B's Gold Code string
+	SeedB1_form        uint64
+	SeedB2_form        uint64
+	OriginalDataStrB   string
+	EncodedDataStrB    string
+	DataLengthB        int
+	GeneratedGoldCodeB string
 
-	SimulationDataLength int // Max of DataLengthA, DataLengthB
+	SimulationDataLength        int
+	FullTransmittedSignalLength int
 
-	// Module 3: Channel
-	NoiseLevel_form           float64 // Noise level from form
-	TransmittedSignalAStr     string  // NEW: User A transmitted signal
-	TransmittedSignalBStr     string  // NEW: User B transmitted signal
+	NoiseLevel_form           float64
+	TransmittedSignalAStr     string
+	TransmittedSignalBStr     string
 	CombinedSignalStr         string
 	ReceivedSignalStr         string
-	GoldCodeLength            int    // Needed for context in channel display
-	ReceivedSignalSegmentAStr string // NEW
-	ReceivedSignalSegmentBStr string // NEW
-	CorrelatedSignalAStr      string // NEW
-	CorrelatedSignalBStr      string // NEW
+	GoldCodeLength            int
+	ReceivedSignalSegmentAStr string
+	ReceivedSignalSegmentBStr string
+	CorrelatedSignalAStr      string
+	CorrelatedSignalBStr      string
 
-	// Module 4: Receivers
-	// User A
 	DecodedTextA    string
 	DecodedDataStrA string
 	ErrorCountA     int
 	BER_A_str       string
-	// User B
+
 	DecodedTextB    string
 	DecodedDataStrB string
 	ErrorCountB     int
 	BER_B_str       string
 
-	// Module 5: Code Analysis
-	AutocorrelationPeak        int     // GoldCodeLength
-	MaxOffPeakAutocorrelationA float32 // Normalized
-	MaxOffPeakAutocorrelationB float32 // Normalized
-	CrossCorrelationAB         float32 // Normalized
+	AutocorrelationPeak        int
+	MaxOffPeakAutocorrelationA float32
+	MaxOffPeakAutocorrelationB float32
+	CrossCorrelationAB         float32
 }
 
 var cdmaGlobalState = &CDMASimulationState{}
-
-// --- END NEW ---
 
 // ResponseData holds data for the response template
 type ResponseData struct {
@@ -214,6 +197,8 @@ type CDMATransmitterUserData struct { // For Module 2 results (User A or B)
 	EncodedDataStr  string // NEW: Encoded data string
 	DataLength      int
 	GoldCodeLength  int // For context
+	// TransmittedSignalStr is already in the anonymous struct in the handler
+	FullTransmittedSignalLength int // NEW: Full length of the transmitted signal
 }
 
 type CDMAChannelData struct { // For Module 3 results
@@ -273,12 +258,6 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Debug logging - log all received form values
-	log.Printf("=== Form Values Received ===")
-	log.Printf("Request Method: %s", r.Method)
-	log.Printf("Content-Type: %s", r.Header.Get("Content-Type"))
-
-	// Parse form data with better error handling
 	seqType := strings.TrimSpace(r.FormValue("seqType"))
 	seqText := strings.TrimSpace(r.FormValue("seqText"))
 	seqLengthStr := strings.TrimSpace(r.FormValue("seqLength"))
@@ -289,27 +268,14 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	goldTaps2Str := strings.TrimSpace(r.FormValue("goldTaps2"))
 	decoderType := strings.TrimSpace(r.FormValue("decoderType"))
 
-	// Parse module enable checkboxes
 	errorEnabled := r.FormValue("errorEnabled") == "on"
 	decoderEnabled := r.FormValue("decoderEnabled") == "on"
 	berEnabled := r.FormValue("berEnabled") == "on"
 	autocorrEnabled := r.FormValue("autocorrEnabled") == "on"
 
-	log.Printf("seqText: '%s'", seqText)
-	log.Printf("seqLength: '%s'", seqLengthStr)
-	log.Printf("errorRate: '%s'", errorRateStr)
-	log.Printf("errorType: '%s'", errorType)
-	log.Printf("goldN: '%s'", goldNStr)
-	log.Printf("goldTaps1: '%s'", goldTaps1Str)
-	log.Printf("goldTaps2: '%s'", goldTaps2Str)
-	log.Printf("decoderType: '%s'", decoderType)
-	log.Printf("=== End Form Values ===")
-
-	// Generate or parse bit sequence
 	var bitSeq *simulation.BitSequence
 	if seqType == "text" {
 		bitSeq = simulation.StringAsSequence(seqText)
-		log.Printf("Using text input: '%s'", seqText)
 	} else {
 		seqLength := 64
 		if seqLengthStr != "" {
@@ -324,63 +290,48 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			bitSeq = simulation.RandomSequence(seqLength)
 		}
-		log.Printf("Generated random sequence of length: %d", seqLength)
 	}
 
-	// Parse Gold code parameters with defaults
 	n := 10
 	if goldNStr != "" {
 		if parsed, err := strconv.Atoi(goldNStr); err == nil && parsed >= 2 && parsed <= 16 {
 			n = parsed
 		}
 	}
-	log.Printf("Using Gold N: %d", n)
 
-	// Parse taps for LFSR1
-	taps1 := []uint{0, 3} // default
+	taps1 := []uint{0, 3}
 	if goldTaps1Str != "" {
 		if parsed := parseTaps(goldTaps1Str); len(parsed) > 0 {
 			taps1 = parsed
 		}
 	}
-	log.Printf("Using LFSR1 taps: %v", taps1)
 
-	// Parse taps for LFSR2
-	taps2 := []uint{0, 2, 3, 8} // default
+	taps2 := []uint{0, 2, 3, 8}
 	if goldTaps2Str != "" {
 		if parsed := parseTaps(goldTaps2Str); len(parsed) > 0 {
 			taps2 = parsed
 		}
 	}
-	log.Printf("Using LFSR2 taps: %v", taps2)
 
-	// Parse error parameters with better validation
 	errorRate := 5.0
 	if errorRateStr != "" {
 		if parsed, err := strconv.ParseFloat(errorRateStr, 64); err == nil && parsed >= 0 && parsed <= 100 {
 			errorRate = parsed
-		} else {
-			log.Printf("Error parsing errorRate '%s': %v, using default 5.0", errorRateStr, err)
 		}
 	}
-	log.Printf("Using error rate: %.2f%%", errorRate)
 
 	if errorType == "" {
 		errorType = "random"
 	}
-	log.Printf("Using error type: %s", errorType)
 
 	if decoderType == "" {
 		decoderType = "xor"
 	}
-	log.Printf("Using decoder type: %s", decoderType)
 
-	// Generate Gold code with user parameters
 	seed1 := uint64(1)
 	seed2 := uint64(0b1010101010)
 	goldCode := simulation.GenerateGoldCode(uint(n), taps1, seed1, taps2, seed2)
 
-	// Conditional simulation pipeline
 	var encoded *simulation.BitSequence
 	if goldCode != nil {
 		encodedTmp := simulation.EncodeWithGold(*bitSeq, *goldCode)
@@ -397,7 +348,6 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 		corrupted = corruptedTmp
 		errorsIntroduced = errors
 	} else if encoded != nil {
-		// If error module is disabled, pass encoded as corrupted (no errors)
 		corrupted = encoded
 		errorsIntroduced = 0
 	} else {
@@ -417,7 +367,6 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	var errorCount int
 	if berEnabled && decoded != nil {
 		ber = simulation.CalculateBER(*bitSeq, *decoded)
-		// Count errors for display
 		errorCount = 0
 		for i := range bitSeq.Len() {
 			if bitSeq.Get(i) != decoded.Get(i) {
@@ -440,7 +389,6 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Store results globally for other handlers to access
 	globalResults.mutex.Lock()
 	globalResults.Original = bitSeq
 	globalResults.GoldCode = goldCode
@@ -458,18 +406,15 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	globalResults.ErrorRate = errorRate
 	globalResults.ErrorsIntroduced = errorsIntroduced
 	globalResults.Timestamp = time.Now().Format(time.RFC1123)
-	// Store user parameters
 	globalResults.GoldN = n
 	globalResults.GoldTaps1 = taps1
 	globalResults.GoldTaps2 = taps2
 	globalResults.DecoderType = decoderType
-	// Store autocorrelation results
 	globalResults.OriginalAutocorr = originalAutocorr
 	globalResults.EncodedAutocorr = encodedAutocorr
 	globalResults.CorruptedAutocorr = corruptedAutocorr
 	globalResults.mutex.Unlock()
 
-	// Return success response with HTMX trigger event
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("HX-Trigger", "simulation-complete")
 	w.WriteHeader(http.StatusOK)
@@ -477,17 +422,11 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 		time.Now().Format("15:04:05"))
 }
 
-// GeneratorHandler returns stored bit sequence generation results
 func GeneratorHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("GeneratorHandler called")
-
-	// Get stored results from global state
 	globalResults.mutex.RLock()
 
-	// Check if we have stored results
 	if globalResults.Original == nil {
 		globalResults.mutex.RUnlock()
-		log.Printf("GeneratorHandler: No original sequence available")
 		http.Error(w, "No simulation results available. Please run complete simulation first.", http.StatusBadRequest)
 		return
 	}
@@ -499,12 +438,8 @@ func GeneratorHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	globalResults.mutex.RUnlock()
 
-	log.Printf("GeneratorHandler: Returning data - Length: %d, InputText: '%s', BitSequence preview: '%.20s...'",
-		data.Length, data.InputText, data.BitSequence)
-
 	tmpl, err := template.ParseFiles("templates/generator_result.html")
 	if err != nil {
-		log.Printf("GeneratorHandler: Template error: %v", err)
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return
 	}
@@ -514,22 +449,14 @@ func GeneratorHandler(w http.ResponseWriter, r *http.Request) {
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("Error executing generator template: %v", err)
 		http.Error(w, "Template execution error", http.StatusInternalServerError)
-	} else {
-		log.Printf("GeneratorHandler: Template executed successfully")
 	}
 }
 
-// EncoderHandler returns stored Gold code generation and encoding results
 func EncoderHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("EncoderHandler called")
-
-	// Get stored results from global state
 	globalResults.mutex.RLock()
 
-	// Check if we have stored results
 	if globalResults.GoldCode == nil || globalResults.Encoded == nil {
 		globalResults.mutex.RUnlock()
-		log.Printf("EncoderHandler: No gold code or encoded sequence available")
 		http.Error(w, "No simulation results available. Please run complete simulation first.", http.StatusBadRequest)
 		return
 	}
@@ -537,19 +464,15 @@ func EncoderHandler(w http.ResponseWriter, r *http.Request) {
 	data := EncoderData{
 		GoldCode:        globalResults.GoldCode.String(),
 		EncodedSequence: globalResults.Encoded.String(),
-		N:               globalResults.GoldN, // Use actual user parameter
+		N:               globalResults.GoldN,
 		Length:          globalResults.GoldCode.Len(),
 		Taps1:           globalResults.GoldTaps1,
 		Taps2:           globalResults.GoldTaps2,
 	}
 	globalResults.mutex.RUnlock()
 
-	log.Printf("EncoderHandler: Returning data - N: %d, Length: %d, Taps1: %v, Taps2: %v",
-		data.N, data.Length, data.Taps1, data.Taps2)
-
 	tmpl, err := template.ParseFiles("templates/encoder_result.html")
 	if err != nil {
-		log.Printf("EncoderHandler: Template error: %v", err)
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return
 	}
@@ -559,18 +482,12 @@ func EncoderHandler(w http.ResponseWriter, r *http.Request) {
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("Error executing encoder template: %v", err)
 		http.Error(w, "Template execution error", http.StatusInternalServerError)
-	} else {
-		log.Printf("EncoderHandler: Template executed successfully")
 	}
 }
 
-// ErrorHandler returns stored error injection results
 func ErrorHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("ErrorHandler called")
-
 	globalResults.mutex.RLock()
 	if globalResults.Encoded != nil && globalResults.Corrupted == globalResults.Encoded {
-		// Moduł wyłączony
 		globalResults.mutex.RUnlock()
 		w.Header().Set("Content-Type", "text/html")
 		fmt.Fprint(w, `<div class="module-disabled-message">Moduł dodawania błędów jest wyłączony.</div>`)
@@ -578,7 +495,6 @@ func ErrorHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if globalResults.Corrupted == nil {
 		globalResults.mutex.RUnlock()
-		log.Printf("ErrorHandler: No corrupted sequence available")
 		http.Error(w, "No simulation results available. Please run complete simulation first.", http.StatusBadRequest)
 		return
 	}
@@ -591,12 +507,8 @@ func ErrorHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	globalResults.mutex.RUnlock()
 
-	log.Printf("ErrorHandler: Returning data - ErrorType: %s, ErrorRate: %.2f, ErrorsIntroduced: %d",
-		data.ErrorType, data.ErrorRate, data.ErrorsIntroduced)
-
 	tmpl, err := template.ParseFiles("templates/error_result.html")
 	if err != nil {
-		log.Printf("ErrorHandler: Template error: %v", err)
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return
 	}
@@ -607,10 +519,7 @@ func ErrorHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// DecoderHandler returns stored decoding results
 func DecoderHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("DecoderHandler called")
-
 	globalResults.mutex.RLock()
 	if globalResults.Decoded == nil {
 		globalResults.mutex.RUnlock()
@@ -621,7 +530,6 @@ func DecoderHandler(w http.ResponseWriter, r *http.Request) {
 
 	decodedBits := globalResults.Decoded.String()
 	ascii := ""
-	// Only show ASCII if input was text (not random)
 	if globalResults.InputText != "" {
 		ascii = bitsToASCII(decodedBits)
 	}
@@ -633,11 +541,8 @@ func DecoderHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	globalResults.mutex.RUnlock()
 
-	log.Printf("DecoderHandler: Returning data - DecoderType: %s", data.DecoderType)
-
 	tmpl, err := template.ParseFiles("templates/decoder_result.html")
 	if err != nil {
-		log.Printf("DecoderHandler: Template error: %v", err)
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return
 	}
@@ -648,7 +553,6 @@ func DecoderHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// BERHandler returns stored BER calculation results
 func BERHandler(w http.ResponseWriter, r *http.Request) {
 	globalResults.mutex.RLock()
 	if globalResults.Original == nil {
@@ -659,11 +563,7 @@ func BERHandler(w http.ResponseWriter, r *http.Request) {
 	if globalResults.Decoded == nil {
 		globalResults.mutex.RUnlock()
 		w.Header().Set("Content-Type", "text/html")
-		// Sprawdź czy dekoder był wyłączony
-		msg := `<div class="module-disabled-message">Moduł BER jest wyłączony.</div>`
-		if globalResults.Decoded == nil {
-			msg = `<div class="module-disabled-message">Moduł BER wymaga działania modułu dekodera.</div>`
-		}
+		msg := `<div class="module-disabled-message">Moduł BER wymaga działania modułu dekodera.</div>`
 		fmt.Fprint(w, msg)
 		return
 	}
@@ -673,7 +573,6 @@ func BERHandler(w http.ResponseWriter, r *http.Request) {
 
 	origASCII := ""
 	decASCII := ""
-	// Only show ASCII if input was text (not random)
 	if globalResults.InputText != "" {
 		origASCII = bitsToASCII(origBits)
 		decASCII = bitsToASCII(decBits)
@@ -701,21 +600,14 @@ func BERHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// AutocorrelationHandler returns stored autocorrelation analysis results
 func AutocorrelationHandler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("AutocorrelationHandler called")
-
-	// Get stored results from global state
 	globalResults.mutex.RLock()
 
-	// Check if we have stored results
 	if globalResults.Original == nil {
 		globalResults.mutex.RUnlock()
-		log.Printf("AutocorrelationHandler: No simulation results available")
 		http.Error(w, "No simulation results available. Please run complete simulation first.", http.StatusBadRequest)
 		return
 	}
-	// Sprawdź czy autokorelacja była liczona (wszystkie wartości == 0)
 	if globalResults.OriginalAutocorr == 0 && globalResults.EncodedAutocorr == 0 && globalResults.CorruptedAutocorr == 0 {
 		globalResults.mutex.RUnlock()
 		w.Header().Set("Content-Type", "text/html")
@@ -730,12 +622,8 @@ func AutocorrelationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	globalResults.mutex.RUnlock()
 
-	log.Printf("AutocorrelationHandler: Returning data - Original: %.4f, Encoded: %.4f, Corrupted: %.4f",
-		globalResults.OriginalAutocorr, globalResults.EncodedAutocorr, globalResults.CorruptedAutocorr)
-
 	tmpl, err := template.ParseFiles("templates/autocorrelation_result.html")
 	if err != nil {
-		log.Printf("AutocorrelationHandler: Template error: %v", err)
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return
 	}
@@ -745,14 +633,9 @@ func AutocorrelationHandler(w http.ResponseWriter, r *http.Request) {
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("Error executing autocorrelation template: %v", err)
 		http.Error(w, "Template execution error", http.StatusInternalServerError)
-	} else {
-		log.Printf("AutocorrelationHandler: Template executed successfully")
 	}
 }
 
-// --- NEW: CDMA Simulation Handlers ---
-
-// CDMASimulateHandler runs the CDMA simulation and stores results.
 func CDMASimulateHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		log.Printf("CDMA Form parse error: %v", err)
@@ -773,14 +656,11 @@ func CDMASimulateHandler(w http.ResponseWriter, r *http.Request) {
 		SeqLengthRandomStr: r.FormValue("cdmaSeqLengthRandom"),
 		NoiseLevelStr:      r.FormValue("cdmaNoiseLevel"),
 	}
-	log.Printf("CDMA Simulation Form Data: %+v", formData)
 
-	// Parse Module 1 inputs
 	goldN := uint(parseIntWithDefault(formData.GoldNStr, 10, 2, 16))
 	taps1 := parseTapsWithDefault(formData.GoldTaps1Str, []uint{0, 3})
 	taps2 := parseTapsWithDefault(formData.GoldTaps2Str, []uint{0, 2, 3, 8})
 
-	// Parse Module 2 inputs
 	seedA1 := parseUint64WithDefault(formData.SeedA1Str, 1)
 	seedA2 := parseUint64WithDefault(formData.SeedA2Str, 1)
 	seedB1 := parseUint64WithDefault(formData.SeedB1Str, 2)
@@ -789,12 +669,9 @@ func CDMASimulateHandler(w http.ResponseWriter, r *http.Request) {
 	seqLengthRandomBytes := parseIntWithDefault(formData.SeqLengthRandomStr, 1, 1, 10)
 	seqLengthRandomBits := seqLengthRandomBytes * 8
 
-	// Parse Module 3 input - convert percentage to decimal
-	// Default to 100%, min 0%, max 10000% (allowing std dev up to 100.0)
-	noiseLevelPercent := parseFloatWithDefault(formData.NoiseLevelStr, 100.0, 0.0, math.MaxFloat64) // Changed maxVal to math.MaxFloat64
-	noiseLevel := noiseLevelPercent / 100.0                                                         // Convert percentage to decimal std dev
+	noiseLevelPercent := parseFloatWithDefault(formData.NoiseLevelStr, 100.0, 0.0, math.MaxFloat64)
+	noiseLevel := noiseLevelPercent / 100.0
 
-	// Perform CDMA simulation
 	simResult := simulation.SimulateCDMA(
 		goldN, taps1, taps2,
 		seedA1, seedA2, formData.TextUserAStr,
@@ -803,10 +680,8 @@ func CDMASimulateHandler(w http.ResponseWriter, r *http.Request) {
 		noiseLevel,
 	)
 
-	// Store the percentage value for display
 	simResult.NoiseLevel = noiseLevelPercent
 
-	// Populate cdmaGlobalState (same as before)
 	cdmaGlobalState.mutex.Lock()
 	cdmaGlobalState.Timestamp = simResult.Timestamp
 	cdmaGlobalState.GlobalN = simResult.N
@@ -837,6 +712,7 @@ func CDMASimulateHandler(w http.ResponseWriter, r *http.Request) {
 	cdmaGlobalState.GeneratedGoldCodeB = simResult.GoldCodeBStr
 
 	cdmaGlobalState.SimulationDataLength = simResult.SimulationDataLength
+	cdmaGlobalState.FullTransmittedSignalLength = simResult.FullTransmittedSignalLength
 	cdmaGlobalState.NoiseLevel_form = simResult.NoiseLevel
 	cdmaGlobalState.TransmittedSignalAStr = simResult.TransmittedSignalAStr
 	cdmaGlobalState.TransmittedSignalBStr = simResult.TransmittedSignalBStr
@@ -845,8 +721,8 @@ func CDMASimulateHandler(w http.ResponseWriter, r *http.Request) {
 	cdmaGlobalState.GoldCodeLength = simResult.GoldCodeLength
 	cdmaGlobalState.ReceivedSignalSegmentAStr = simResult.ReceivedSignalSegmentAStr
 	cdmaGlobalState.ReceivedSignalSegmentBStr = simResult.ReceivedSignalSegmentBStr
-	cdmaGlobalState.CorrelatedSignalAStr = simResult.CorrelatedSignalUserAStr // NEW
-	cdmaGlobalState.CorrelatedSignalBStr = simResult.CorrelatedSignalUserBStr // NEW
+	cdmaGlobalState.CorrelatedSignalAStr = simResult.CorrelatedSignalUserAStr
+	cdmaGlobalState.CorrelatedSignalBStr = simResult.CorrelatedSignalUserBStr
 
 	cdmaGlobalState.DecodedTextA = simResult.DecodedTextA
 	if simResult.DecodedDataSeqA != nil {
@@ -867,8 +743,6 @@ func CDMASimulateHandler(w http.ResponseWriter, r *http.Request) {
 	cdmaGlobalState.MaxOffPeakAutocorrelationB = simResult.MaxOffPeakAutocorrelationB
 	cdmaGlobalState.CrossCorrelationAB = simResult.CrossCorrelationAB
 	cdmaGlobalState.mutex.Unlock()
-
-	log.Printf("CDMA Simulation completed. Global state updated. SimDataLen: %d", simResult.SimulationDataLength)
 
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("HX-Trigger", "cdma-simulation-complete")
@@ -1094,25 +968,27 @@ func CDMATransmitterAResultsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := struct {
-		Timestamp            string
-		UserLabel            string
-		InputText            string
-		Seed1                uint64
-		Seed2                uint64
-		OriginalDataStr      string
-		EncodedDataStr       string
-		DataLength           int
-		TransmittedSignalStr string // Added field
+		Timestamp                   string
+		UserLabel                   string
+		InputText                   string
+		Seed1                       uint64
+		Seed2                       uint64
+		OriginalDataStr             string
+		EncodedDataStr              string
+		DataLength                  int
+		TransmittedSignalStr        string
+		FullTransmittedSignalLength int // Added field
 	}{
-		Timestamp:            cdmaGlobalState.Timestamp,
-		UserLabel:            "A",
-		InputText:            cdmaGlobalState.InputTextA,
-		Seed1:                cdmaGlobalState.SeedA1_form,
-		Seed2:                cdmaGlobalState.SeedA2_form,
-		OriginalDataStr:      cdmaGlobalState.OriginalDataStrA,
-		EncodedDataStr:       cdmaGlobalState.EncodedDataStrA,
-		DataLength:           cdmaGlobalState.DataLengthA,
-		TransmittedSignalStr: cdmaGlobalState.TransmittedSignalAStr, // Populate added field
+		Timestamp:                   cdmaGlobalState.Timestamp,
+		UserLabel:                   "A",
+		InputText:                   cdmaGlobalState.InputTextA,
+		Seed1:                       cdmaGlobalState.SeedA1_form,
+		Seed2:                       cdmaGlobalState.SeedA2_form,
+		OriginalDataStr:             cdmaGlobalState.OriginalDataStrA,
+		EncodedDataStr:              cdmaGlobalState.EncodedDataStrA,
+		DataLength:                  cdmaGlobalState.DataLengthA,
+		TransmittedSignalStr:        cdmaGlobalState.TransmittedSignalAStr,
+		FullTransmittedSignalLength: cdmaGlobalState.FullTransmittedSignalLength, // Populate added field
 	}
 	tmpl, err := template.ParseFiles("templates/cdma_transmitter_user_result.html")
 	if err != nil {
@@ -1135,25 +1011,27 @@ func CDMATransmitterBResultsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := struct {
-		Timestamp            string
-		UserLabel            string
-		InputText            string
-		Seed1                uint64
-		Seed2                uint64
-		OriginalDataStr      string
-		EncodedDataStr       string
-		DataLength           int
-		TransmittedSignalStr string // Added field
+		Timestamp                   string
+		UserLabel                   string
+		InputText                   string
+		Seed1                       uint64
+		Seed2                       uint64
+		OriginalDataStr             string
+		EncodedDataStr              string
+		DataLength                  int
+		TransmittedSignalStr        string
+		FullTransmittedSignalLength int // Added field
 	}{
-		Timestamp:            cdmaGlobalState.Timestamp,
-		UserLabel:            "B",
-		InputText:            cdmaGlobalState.InputTextB,
-		Seed1:                cdmaGlobalState.SeedB1_form,
-		Seed2:                cdmaGlobalState.SeedB2_form,
-		OriginalDataStr:      cdmaGlobalState.OriginalDataStrB,
-		EncodedDataStr:       cdmaGlobalState.EncodedDataStrB,
-		DataLength:           cdmaGlobalState.DataLengthB,
-		TransmittedSignalStr: cdmaGlobalState.TransmittedSignalBStr, // Populate added field
+		Timestamp:                   cdmaGlobalState.Timestamp,
+		UserLabel:                   "B",
+		InputText:                   cdmaGlobalState.InputTextB,
+		Seed1:                       cdmaGlobalState.SeedB1_form,
+		Seed2:                       cdmaGlobalState.SeedB2_form,
+		OriginalDataStr:             cdmaGlobalState.OriginalDataStrB,
+		EncodedDataStr:              cdmaGlobalState.EncodedDataStrB,
+		DataLength:                  cdmaGlobalState.DataLengthB,
+		TransmittedSignalStr:        cdmaGlobalState.TransmittedSignalBStr,
+		FullTransmittedSignalLength: cdmaGlobalState.FullTransmittedSignalLength, // Populate added field
 	}
 	tmpl, err := template.ParseFiles("templates/cdma_transmitter_user_result.html")
 	if err != nil {
@@ -1224,7 +1102,6 @@ func parseTaps(tapsStr string) []uint {
 	return taps
 }
 
-// bitsToASCII converts a string of '0' and '1' to ASCII if length is a multiple of 8
 func bitsToASCII(bits string) string {
 	if len(bits)%8 != 0 || len(bits) == 0 {
 		return ""
@@ -1244,7 +1121,6 @@ func bitsToASCII(bits string) string {
 	return sb.String()
 }
 
-// --- Helper functions for parsing with defaults ---
 func parseIntWithDefault(valStr string, defaultVal int, minVal int, maxVal int) int {
 	if val, err := strconv.Atoi(strings.TrimSpace(valStr)); err == nil {
 		if val >= minVal && val <= maxVal {
@@ -1256,13 +1132,10 @@ func parseIntWithDefault(valStr string, defaultVal int, minVal int, maxVal int) 
 
 func parseUint64WithDefault(valStr string, defaultVal uint64) uint64 {
 	trimmedValStr := strings.TrimSpace(valStr)
-	if trimmedValStr == "" { // Handle empty string explicitly if needed, or rely on ParseUint failure
+	if trimmedValStr == "" {
 		return defaultVal
 	}
 	if val, err := strconv.ParseUint(trimmedValStr, 10, 64); err == nil {
-		// It's common for seeds to be non-zero, but 0 can be a valid state for some LFSRs if handled.
-		// For simplicity, let's allow 0 if parsed correctly.
-		// If a strict non-zero policy is needed, add '&& val > 0'
 		return val
 	}
 	return defaultVal
@@ -1282,9 +1155,8 @@ func parseTapsWithDefault(tapsStr string, defaultTaps []uint) []uint {
 	if trimmedTapsStr == "" {
 		return defaultTaps
 	}
-	parsed := parseTaps(trimmedTapsStr) // parseTaps already handles trimming spaces around commas and parts
+	parsed := parseTaps(trimmedTapsStr)
 	if len(parsed) == 0 {
-		// This case might occur if tapsStr is not empty but contains no valid numbers, e.g., "," or "a,b"
 		return defaultTaps
 	}
 	return parsed

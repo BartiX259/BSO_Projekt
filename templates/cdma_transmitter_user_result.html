@@ -9,4 +9,7 @@
     <div class="result-value">{{if gt (len .OriginalDataStr) 64}}{{printf "%.64s" .OriginalDataStr}}...{{else}}{{.OriginalDataStr}}{{end}}</div>
     <div class="result-label" style="margin-top: 8px;">Sygnał nadawany:</div>
     <div class="result-value">{{.TransmittedSignalStr}}</div>
+    <div style="margin-top: 4px; font-size: 0.9em; color: #666;">
+        Długość sygnału nadawanego: {{.FullTransmittedSignalLength}} elementów
+    </div>
 </div>
