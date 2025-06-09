@@ -47,12 +47,6 @@ var latestGeneralSimFileMutex sync.RWMutex
 var latestCDMASimFilePath string
 var latestCDMASimFileMutex sync.RWMutex
 
-// --- NEW: CDMA Simulation global storage ---
-// var cdmaGlobalResults = struct { // This will be replaced
-// 	sync.RWMutex
-// 	Result *simulation.CDMAResult
-// }{}
-
 type CDMASimulationState struct {
 	mutex sync.RWMutex
 
@@ -815,8 +809,6 @@ func CDMASimulateHandler(w http.ResponseWriter, r *http.Request) {
 		latestCDMASimFileMutex.Unlock()
 	}
 
-	log.Printf("CDMA Simulation completed. Global state updated. SimDataLen: %d", simResult.SimulationDataLength)
-
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("HX-Trigger", "cdma-simulation-complete")
 	w.WriteHeader(http.StatusOK)
@@ -851,7 +843,6 @@ func CDMABERAResultsHandler(w http.ResponseWriter, r *http.Request) {
 
 	tmpl, err := template.ParseFiles("templates/cdma_ber_user_result.html")
 	if err != nil {
-		log.Printf("CDMABERAResultsHandler: Template error: %v", err)
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return
 	}
@@ -888,7 +879,6 @@ func CDMABERBResultsHandler(w http.ResponseWriter, r *http.Request) {
 
 	tmpl, err := template.ParseFiles("templates/cdma_ber_user_result.html")
 	if err != nil {
-		log.Printf("CDMABERBResultsHandler: Template error: %v", err)
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return
 	}
@@ -922,7 +912,6 @@ func CDMASystemConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	tmpl, err := template.ParseFiles("templates/cdma_system_config_result.html")
 	if err != nil {
-		log.Printf("CDMASystemConfigHandler: Template error: %v", err)
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return
 	}
@@ -952,7 +941,6 @@ func CDMAChannelResultsHandler(w http.ResponseWriter, r *http.Request) {
 
 	tmpl, err := template.ParseFiles("templates/cdma_channel_result.html")
 	if err != nil {
-		log.Printf("CDMAChannelResultsHandler: Template error: %v", err)
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return
 	}
