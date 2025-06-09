@@ -2,3 +2,4 @@ main
 main.exe
 tmp/build-errors.log
 simulation_data
+cdma_simulation_data

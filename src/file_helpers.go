@@ -8,50 +8,47 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/BartiX259/BSO_Projekt/src/simulation"
 )
 
-const outputDir = "simulation_data" // Directory to store result files
-const maxResultFiles = 5
+const (
+	generalSimOutputDir  = "simulation_data"
+	cdmaSimOutputDir     = "cdma_simulation_data"
+	generalSimFilePrefix = "simulation_results_"
+	cdmaSimFilePrefix    = "cdma_simulation_results_"
+	fileSuffix           = ".txt"
+	maxFilesToKeep       = 5
+)
 
-// init function to ensure directory exists at package initialization for this file's scope
 func init() {
-	ensureOutputDirExists()
+	ensureDirExists(generalSimOutputDir)
+	ensureDirExists(cdmaSimOutputDir)
 }
 
-// ensureOutputDirExists creates the output directory if it doesn't exist.
-func ensureOutputDirExists() {
-	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
-		log.Printf("Creating output directory: %s", outputDir)
-		err = os.MkdirAll(outputDir, 0755) // Create directory with rwxr-xr-x permissions
-		if err != nil {
-			log.Fatalf("Failed to create output directory '%s': %v", outputDir, err)
+func ensureDirExists(dirPath string) {
+	if _, err := os.Stat(dirPath); os.IsNotExist(err) {
+		log.Printf("Creating directory: %s", dirPath)
+		if err := os.MkdirAll(dirPath, 0755); err != nil {
+			log.Fatalf("Failed to create directory '%s': %v", dirPath, err)
 		}
 	}
 }
 
-// FormatResultsToText formats the SimulationResults into a human-readable string.
-func FormatResultsToText(results *SimulationResults) string {
-	var sb strings.Builder
+// --- General Simulation Results Formatting and Saving ---
 
-	// Ensure results and its timestamp are not nil before using them
-	timestampStr := "N/A"
-	if results != nil && results.Timestamp != "" {
-		timestampStr = results.Timestamp
-	} else if results != nil {
-		timestampStr = "Timestamp not set"
-	}
-
-
-	sb.WriteString(fmt.Sprintf("Simulation Results - Timestamp: %s\n", timestampStr))
-	sb.WriteString("==================================================\n\n")
-
+func FormatSimulationResultsToText(results *SimulationResults) string {
 	if results == nil {
-		sb.WriteString("No simulation data available.\n")
-		sb.WriteString("==================================================\n")
-		sb.WriteString("End of Report\n")
-		return sb.String()
+		return "No general simulation data available.\n"
+	}
+	var sb strings.Builder
+	ts := results.Timestamp
+	if ts == "" {
+		ts = "N/A"
 	}
 
+	sb.WriteString(fmt.Sprintf("Simulation Results - Timestamp: %s\n", ts))
+	sb.WriteString("==================================================\n\n")
 	sb.WriteString("Input Parameters:\n")
 	sb.WriteString(fmt.Sprintf("  Input Text: %s\n", results.InputText))
 	sb.WriteString(fmt.Sprintf("  Gold Code N: %d\n", results.GoldN))
@@ -60,160 +57,214 @@ func FormatResultsToText(results *SimulationResults) string {
 	sb.WriteString(fmt.Sprintf("  Decoder Type: %s\n", results.DecoderType))
 	sb.WriteString(fmt.Sprintf("  Error Type: %s\n", results.ErrorType))
 	sb.WriteString(fmt.Sprintf("  Error Rate: %.2f%%\n", results.ErrorRate))
-	sb.WriteString("\n")
-
-	sb.WriteString("Generated/Processed Sequences:\n")
+	sb.WriteString("\nGenerated/Processed Sequences:\n")
 	if results.Original != nil {
-		sb.WriteString(fmt.Sprintf("  Original Sequence (length %d):\n    %s\n", results.Original.Len(), results.Original.String()))
+		sb.WriteString(fmt.Sprintf("  Original (len %d): %s\n", results.Original.Len(), results.Original.String()))
 		if results.InputText != "" {
 			sb.WriteString(fmt.Sprintf("  Original ASCII: %s\n", bitsToASCII(results.Original.String())))
 		}
 	} else {
 		sb.WriteString("  Original Sequence: Not available\n")
 	}
-
 	if results.GoldCode != nil {
-		sb.WriteString(fmt.Sprintf("  Gold Code (length %d):\n    %s\n", results.GoldCode.Len(), results.GoldCode.String()))
+		sb.WriteString(fmt.Sprintf("  Gold Code (len %d): %s\n", results.GoldCode.Len(), results.GoldCode.String()))
 	} else {
 		sb.WriteString("  Gold Code: Not available\n")
 	}
-
 	if results.Encoded != nil {
-		sb.WriteString(fmt.Sprintf("  Encoded Sequence (length %d):\n    %s\n", results.Encoded.Len(), results.Encoded.String()))
+		sb.WriteString(fmt.Sprintf("  Encoded (len %d): %s\n", results.Encoded.Len(), results.Encoded.String()))
 	} else {
 		sb.WriteString("  Encoded Sequence: Not available / Module disabled\n")
 	}
-
 	if results.Corrupted != nil {
-		sb.WriteString(fmt.Sprintf("  Corrupted Sequence (length %d):\n    %s\n", results.Corrupted.Len(), results.Corrupted.String()))
+		sb.WriteString(fmt.Sprintf("  Corrupted (len %d): %s\n", results.Corrupted.Len(), results.Corrupted.String()))
 		sb.WriteString(fmt.Sprintf("  Errors Introduced: %d\n", results.ErrorsIntroduced))
 	} else {
 		sb.WriteString("  Corrupted Sequence: Not available / Error module disabled\n")
 	}
-
 	if results.Decoded != nil {
-		sb.WriteString(fmt.Sprintf("  Decoded Sequence (length %d):\n    %s\n", results.Decoded.Len(), results.Decoded.String()))
-		if results.InputText != "" { // Only show decoded ASCII if input was text
+		sb.WriteString(fmt.Sprintf("  Decoded (len %d): %s\n", results.Decoded.Len(), results.Decoded.String()))
+		if results.InputText != "" {
 			sb.WriteString(fmt.Sprintf("  Decoded ASCII: %s\n", bitsToASCII(results.Decoded.String())))
 		}
 	} else {
 		sb.WriteString("  Decoded Sequence: Not available / Decoder module disabled\n")
 	}
-	sb.WriteString("\n")
-
-	sb.WriteString("Analysis Results:\n")
-	if results.Original != nil && results.Decoded != nil { // BER requires Original and Decoded
+	sb.WriteString("\nAnalysis Results:\n")
+	if results.Original != nil && results.Decoded != nil {
 		sb.WriteString(fmt.Sprintf("  BER: %.4f (%.2f%%)\n", results.BER, results.BER*100))
 		sb.WriteString(fmt.Sprintf("  Error Count (vs Original): %d / %d bits\n", results.ErrorCount, results.Original.Len()))
 	} else {
 		sb.WriteString("  BER: Not calculated / Relevant modules disabled\n")
-		sb.WriteString("  Error Count: Not calculated\n")
 	}
-	sb.WriteString("\n")
-
-	sb.WriteString("Autocorrelation (Max Absolute Off-Peak):\n")
+	sb.WriteString("\nAutocorrelation (Max Absolute Off-Peak):\n")
 	if results.OriginalAutocorr != 0 || results.EncodedAutocorr != 0 || results.CorruptedAutocorr != 0 || (results.Original != nil) {
-		sb.WriteString(fmt.Sprintf("  Original Sequence: %.4f\n", results.OriginalAutocorr))
-		if results.Encoded != nil {
-			sb.WriteString(fmt.Sprintf("  Encoded Sequence: %.4f\n", results.EncodedAutocorr))
-		} else {
-			sb.WriteString("  Encoded Sequence: N/A (sequence not generated)\n")
-		}
-		if results.Corrupted != nil {
-			sb.WriteString(fmt.Sprintf("  Corrupted Sequence: %.4f\n", results.CorruptedAutocorr))
-		} else {
-			sb.WriteString("  Corrupted Sequence: N/A (sequence not generated)\n")
-		}
+		sb.WriteString(fmt.Sprintf("  Original: %.4f\n", results.OriginalAutocorr))
+		sb.WriteString(fmt.Sprintf("  Encoded: %.4f\n", results.EncodedAutocorr))
+		sb.WriteString(fmt.Sprintf("  Corrupted: %.4f\n", results.CorruptedAutocorr))
 	} else {
-		sb.WriteString("  Autocorrelation analysis was not performed or results are zero.\n")
+		sb.WriteString("  Autocorrelation analysis not performed or results are zero.\n")
 	}
-
-	sb.WriteString("\n==================================================\n")
-	sb.WriteString("End of Report\n")
-
+	sb.WriteString("\n==================================================\nEnd of Report\n")
 	return sb.String()
 }
 
-// SaveResultsToFileOnServer saves the formatted results to a timestamped file.
-// Returns the path to the saved file and any error encountered.
-func SaveResultsToFileOnServer(results *SimulationResults) (string, error) {
-	ensureOutputDirExists()
-
+func SaveSimulationResultsToFile(results *SimulationResults) (string, error) {
 	if results == nil {
-		return "", fmt.Errorf("cannot save nil results")
+		return "", fmt.Errorf("cannot save nil SimulationResults")
 	}
-
-	// Create a filename based on the simulation timestamp (results.Timestamp)
-	var t time.Time
-	var errParse error
-	if results.Timestamp != "" {
-		t, errParse = time.Parse(time.RFC1123, results.Timestamp)
-		if errParse != nil {
-			log.Printf("Warning: Could not parse results.Timestamp ('%s') for filename, using current time: %v", results.Timestamp, errParse)
-			t = time.Now()
-		}
-	} else {
-		log.Println("Warning: results.Timestamp is empty, using current time for filename.")
-		t = time.Now() // Fallback if timestamp is empty
-	}
-
-	filename := fmt.Sprintf("simulation_results_%s.txt", t.Format("20060102_150405.000"))
-	filePath := filepath.Join(outputDir, filename)
-
-	// Format the results into a string
-	content := FormatResultsToText(results) // Use the local (or package-level) formatting function
-
-	// Write the content to the file
-	err := os.WriteFile(filePath, []byte(content), 0644) // Read/Write for owner, Read for group/others
+	content := FormatSimulationResultsToText(results)
+	filePath, err := saveContentToFile(generalSimOutputDir, generalSimFilePrefix, results.Timestamp, content)
 	if err != nil {
-		log.Printf("Error writing results to file '%s': %v", filePath, err)
 		return "", err
 	}
-
-	log.Printf("Simulation results saved to server at: %s", filePath)
-	cleanupOldResultFiles()
+	cleanupOldFiles(generalSimOutputDir, generalSimFilePrefix, fileSuffix, maxFilesToKeep)
 	return filePath, nil
 }
 
-// cleanupOldResultFiles ensures that only the 'maxResultFiles' most recent result files are kept.
-func cleanupOldResultFiles() {
-	files, err := os.ReadDir(outputDir)
+// --- CDMA Simulation Results Formatting and Saving ---
+
+func FormatCDMAResultsToText(results *simulation.CDMAResult) string {
+	if results == nil {
+		return "No CDMA simulation data available.\n"
+	}
+	var sb strings.Builder
+	ts := results.Timestamp
+	if ts == "" {
+		ts = "N/A"
+	}
+
+	sb.WriteString(fmt.Sprintf("CDMA Simulation Results - Timestamp: %s\n", ts))
+	sb.WriteString("======================================================\n\n")
+	sb.WriteString("Input Parameters:\n")
+	sb.WriteString(fmt.Sprintf("  Gold Code N: %d\n", results.N))
+	sb.WriteString(fmt.Sprintf("  Poly1 Taps: %v, Poly2 Taps: %v\n", results.Poly1, results.Poly2))
+	sb.WriteString(fmt.Sprintf("  User A Seeds (L1/L2): 0x%X / 0x%X\n", results.SeedA1, results.SeedA2))
+	sb.WriteString(fmt.Sprintf("  User B Seeds (L1/L2): 0x%X / 0x%X\n", results.SeedB1, results.SeedB2))
+	sb.WriteString(fmt.Sprintf("  Noise Level: %.4f\n", results.NoiseLevel))
+	sb.WriteString(fmt.Sprintf("  Input Text A: \"%s\", Input Text B: \"%s\"\n", results.InputTextA, results.InputTextB))
+	if results.InputTextA == "" && results.InputTextB == "" {
+		sb.WriteString(fmt.Sprintf("  Random Seq Length: %d bits\n", results.SeqLengthForRandom))
+	}
+	sb.WriteString("\nData Lengths & Codes:\n")
+	sb.WriteString(fmt.Sprintf("  User A Data Bits: %d, User B Data Bits: %d\n", results.DataBitLengthUserA, results.DataBitLengthUserB))
+	sb.WriteString(fmt.Sprintf("  Gold Code Length: %d\n", results.GoldCodeLength))
+	sb.WriteString(fmt.Sprintf("  User A Gold Code: %s\n", results.GoldCodeAStr))
+	sb.WriteString(fmt.Sprintf("  User B Gold Code: %s\n", results.GoldCodeBStr))
+	sb.WriteString("\nCode Properties:\n")
+	sb.WriteString(fmt.Sprintf("  Autocorr Peak: %d, Max Off-Peak A: %.4f, Max Off-Peak B: %.4f\n", results.AutocorrelationPeak, results.MaxOffPeakAutocorrelationA, results.MaxOffPeakAutocorrelationB))
+	sb.WriteString(fmt.Sprintf("  Cross-Correlation (A vs B): %.4f\n", results.CrossCorrelationAB))
+	sb.WriteString("\nUser A Path:\n")
+	if results.OriginalDataSeqA != nil {
+		sb.WriteString(fmt.Sprintf("  Original A: %s\n", results.OriginalDataSeqA.String()))
+	}
+	if results.EncodedDataSeqA != nil {
+		sb.WriteString(fmt.Sprintf("  Encoded A: %s\n", results.EncodedDataSeqA.String()))
+	}
+	sb.WriteString(fmt.Sprintf("  Transmitted A (trunc): %s\n", results.TransmittedSignalAStr))
+	sb.WriteString("\nUser B Path:\n")
+	if results.OriginalDataSeqB != nil {
+		sb.WriteString(fmt.Sprintf("  Original B: %s\n", results.OriginalDataSeqB.String()))
+	}
+	if results.EncodedDataSeqB != nil {
+		sb.WriteString(fmt.Sprintf("  Encoded B: %s\n", results.EncodedDataSeqB.String()))
+	}
+	sb.WriteString(fmt.Sprintf("  Transmitted B (trunc): %s\n", results.TransmittedSignalBStr))
+	sb.WriteString("\nChannel & Reception:\n")
+	sb.WriteString(fmt.Sprintf("  Combined (trunc): %s\n", results.CombinedSignalStr))
+	sb.WriteString(fmt.Sprintf("  Received (trunc): %s\n", results.ReceivedSignalStr))
+	sb.WriteString(fmt.Sprintf("  Rx Segment A (trunc): %s, Rx Segment B (trunc): %s\n", results.ReceivedSignalSegmentAStr, results.ReceivedSignalSegmentBStr))
+	sb.WriteString("\nUser A Decoding:\n")
+	sb.WriteString(fmt.Sprintf("  Correlated A (trunc): %s\n", results.CorrelatedSignalUserAStr))
+	if results.DecodedDataSeqA != nil {
+		sb.WriteString(fmt.Sprintf("  Decoded A: %s\n", results.DecodedDataSeqA.String()))
+		sb.WriteString(fmt.Sprintf("  Decoded Text A: \"%s\"\n", results.DecodedTextA))
+	}
+	sb.WriteString(fmt.Sprintf("  BER A: %.2f%%, Errors A: %d/%d\n", results.BER_A*100, results.ErrorCountA, results.DataBitLengthUserA))
+	sb.WriteString("\nUser B Decoding:\n")
+	sb.WriteString(fmt.Sprintf("  Correlated B (trunc): %s\n", results.CorrelatedSignalUserBStr))
+	if results.DecodedDataSeqB != nil {
+		sb.WriteString(fmt.Sprintf("  Decoded B: %s\n", results.DecodedDataSeqB.String()))
+		sb.WriteString(fmt.Sprintf("  Decoded Text B: \"%s\"\n", results.DecodedTextB))
+	}
+	sb.WriteString(fmt.Sprintf("  BER B: %.2f%%, Errors B: %d/%d\n", results.BER_B*100, results.ErrorCountB, results.DataBitLengthUserB))
+	sb.WriteString("\n======================================================\nEnd of CDMA Report\n")
+	return sb.String()
+}
+
+func SaveCDMAResultsToFile(results *simulation.CDMAResult) (string, error) {
+	if results == nil {
+		return "", fmt.Errorf("cannot save nil CDMAResult")
+	}
+	content := FormatCDMAResultsToText(results)
+	filePath, err := saveContentToFile(cdmaSimOutputDir, cdmaSimFilePrefix, results.Timestamp, content)
 	if err != nil {
-		log.Printf("Error reading output directory '%s' for cleanup: %v", outputDir, err)
+		return "", err
+	}
+	cleanupOldFiles(cdmaSimOutputDir, cdmaSimFilePrefix, fileSuffix, maxFilesToKeep)
+	return filePath, nil
+}
+
+// --- Shared Helper Functions ---
+
+func saveContentToFile(dir, prefix, timestampStr, content string) (string, error) {
+	ensureDirExists(dir) // Ensure directory exists just in case
+
+	var t time.Time
+	var errParse error
+	if timestampStr != "" {
+		t, errParse = time.Parse(time.RFC1123, timestampStr)
+		if errParse != nil {
+			log.Printf("Warning: Could not parse timestamp ('%s') for filename, using current time: %v", timestampStr, errParse)
+			t = time.Now()
+		}
+	} else {
+		log.Println("Warning: Timestamp is empty, using current time for filename.")
+		t = time.Now()
+	}
+
+	filename := fmt.Sprintf("%s%s%s", prefix, t.Format("20060102_150405.000"), fileSuffix)
+	filePath := filepath.Join(dir, filename)
+
+	err := os.WriteFile(filePath, []byte(content), 0644)
+	if err != nil {
+		log.Printf("Error writing to file '%s': %v", filePath, err)
+		return "", err
+	}
+	log.Printf("Results saved to server at: %s", filePath)
+	return filePath, nil
+}
+
+func cleanupOldFiles(dir, prefix, suffix string, maxFiles int) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		log.Printf("Error reading directory '%s' for cleanup: %v", dir, err)
 		return
 	}
 
-	resultFiles := []os.DirEntry{}
-	for _, file := range files {
-		// Filter for our specific result files
-		if !file.IsDir() && strings.HasPrefix(file.Name(), "simulation_results_") && strings.HasSuffix(file.Name(), ".txt") {
-			resultFiles = append(resultFiles, file)
+	var eligibleFiles []os.DirEntry
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasPrefix(entry.Name(), prefix) && strings.HasSuffix(entry.Name(), suffix) {
+			eligibleFiles = append(eligibleFiles, entry)
 		}
 	}
 
-	if len(resultFiles) <= maxResultFiles {
-		return // No need to clean up
+	if len(eligibleFiles) <= maxFiles {
+		return
 	}
 
-	// Sort files by modification time (oldest first).
-	sort.Slice(resultFiles, func(i, j int) bool {
-		infoI, errI := resultFiles[i].Info()
-		infoJ, errJ := resultFiles[j].Info()
-		if errI != nil || errJ != nil {
-			return false
-		}
-		return infoI.ModTime().Before(infoJ.ModTime())
+	// Sort by filename (ascending, so oldest are first, assuming YYYYMMDD_HHMMSS.mmm format)
+	sort.Slice(eligibleFiles, func(i, j int) bool {
+		return eligibleFiles[i].Name() < eligibleFiles[j].Name()
 	})
 
-
-	filesToDelete := len(resultFiles) - maxResultFiles
-	for i := range filesToDelete {
-		filePathToDelete := filepath.Join(outputDir, resultFiles[i].Name())
-		err := os.Remove(filePathToDelete)
-		if err != nil {
-			log.Printf("Error deleting old result file '%s': %v", filePathToDelete, err)
+	filesToDeleteCount := len(eligibleFiles) - maxFiles
+	for i := 0; i < filesToDeleteCount; i++ {
+		filePathToDelete := filepath.Join(dir, eligibleFiles[i].Name())
+		if err := os.Remove(filePathToDelete); err != nil {
+			log.Printf("Error deleting old file '%s': %v", filePathToDelete, err)
 		} else {
-			log.Printf("Deleted old result file: %s", filePathToDelete)
+			log.Printf("Deleted old file: %s", filePathToDelete)
 		}
 	}
 }
