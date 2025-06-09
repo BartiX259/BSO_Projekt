@@ -261,6 +261,20 @@ body {
     font-size: 1.1em;
 }
 
+/* --- MODULE DISABLED STYLES --- */
+.module-disabled {
+    opacity: 0.5;
+    /* pointer-events: none;  USUNIĘTE, żeby checkbox był zawsze aktywny */
+    filter: grayscale(0.7);
+}
+.module-disabled-message {
+    color: #b00;
+    font-weight: bold;
+    padding: 1em;
+    text-align: center;
+}
+/* --- END MODULE DISABLED STYLES --- */
+
 /* Responsive: horizontal scroll for modules on small screens */
 @media (max-width: 1200px) {
     .modules-grid {

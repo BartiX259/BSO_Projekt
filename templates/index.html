@@ -54,7 +54,7 @@
                 </div>
                 <div class="card" id="card-error">
                     <div class="card-header">
-                        <input type="checkbox" name="errorEnabled" checked> <span class="icon">⚡</span>Dodawanie Błędów
+                        <input type="checkbox" name="errorEnabled" checked onchange="toggleModule(this, 'card-error')"> <span class="icon">⚡</span>Dodawanie Błędów
                     </div>
                     <div class="card-config">
                         <label>Typ błędu:
@@ -76,7 +76,7 @@
                 </div>
                 <div class="card" id="card-decoder">
                     <div class="card-header">
-                        <input type="checkbox" name="decoderEnabled" checked> 
+                        <input type="checkbox" name="decoderEnabled" checked onchange="toggleModule(this, 'card-decoder')"> 
                         <span class="icon">🔒</span>Dekoder
                     </div>
                     <div class="card-config">
@@ -96,7 +96,7 @@
                 
                 <div class="card" id="card-ber">
                     <div class="card-header">
-                        <input type="checkbox" name="berEnabled" checked> 
+                        <input type="checkbox" name="berEnabled" checked onchange="toggleModule(this, 'card-ber')"> 
                         <span class="icon">📊</span>Analiza BER
                     </div>
                     <div class="card-config">
@@ -112,7 +112,7 @@
                 
                 <div class="card" id="card-autocorrelation">
                     <div class="card-header">
-                        <input type="checkbox" name="autocorrEnabled" checked> 
+                        <input type="checkbox" name="autocorrEnabled" checked onchange="toggleModule(this, 'card-autocorrelation')"> 
                         <span class="icon">📈</span>Analiza Autokorelacji
                     </div>
                     <div class="card-config">
@@ -135,5 +135,23 @@
         <div id="simulation-status"></div>
         
         <div id="results"></div>
+         
+        <script>
+            function toggleModule(checkbox, cardId) {
+                var card = document.getElementById(cardId);
+                if (!card) return;
+                if (checkbox.checked) {
+                    card.classList.remove('module-disabled');
+                } else {
+                    card.classList.add('module-disabled');
+                }
+            }
+            // Przywróć stan po odświeżeniu (np. po reset)
+            window.addEventListener('DOMContentLoaded', function() {
+                document.querySelectorAll('.card-header input[type=checkbox]').forEach(function(cb) {
+                    toggleModule(cb, cb.closest('.card').id);
+                });
+            });
+        </script>
     </body>
 </html>

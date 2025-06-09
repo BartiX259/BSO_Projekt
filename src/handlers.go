@@ -138,6 +138,13 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	goldTaps2Str := strings.TrimSpace(r.FormValue("goldTaps2"))
 	decoderType := strings.TrimSpace(r.FormValue("decoderType"))
 
+	// --- NEW: Parse module enable checkboxes ---
+	errorEnabled := r.FormValue("errorEnabled") == "on"
+	decoderEnabled := r.FormValue("decoderEnabled") == "on"
+	berEnabled := r.FormValue("berEnabled") == "on"
+	autocorrEnabled := r.FormValue("autocorrEnabled") == "on"
+	// --- END NEW ---
+
 	log.Printf("seqText: '%s'", seqText)
 	log.Printf("seqLength: '%s'", seqLengthStr)
 	log.Printf("errorRate: '%s'", errorRateStr)
@@ -217,30 +224,66 @@ func SimulateHandler(w http.ResponseWriter, r *http.Request) {
 	seed2 := uint64(0b1010101010)
 	goldCode := simulation.GenerateGoldCode(uint(n), taps1, seed1, taps2, seed2)
 
-	// Run complete simulation pipeline
-	encoded := simulation.EncodeWithGold(*bitSeq, *goldCode)
-	log.Printf("Encoded sequence length: %d", encoded.Len())
+	// --- NEW: Conditional simulation pipeline ---
+	var encoded *simulation.BitSequence
+	if goldCode != nil {
+		encodedTmp := simulation.EncodeWithGold(*bitSeq, *goldCode)
+		encoded = encodedTmp
+	} else {
+		encoded = nil
+	}
 
-	// Convert error rate from percentage to decimal for the function
-	errorRateDecimal := errorRate / 100.0
-	corrupted, errorsIntroduced := simulation.AddErrors(encoded, errorRateDecimal, errorType)
-	log.Printf("Errors introduced: %d (rate: %.4f)", errorsIntroduced, errorRateDecimal)
+	var corrupted *simulation.BitSequence
+	var errorsIntroduced int
+	if errorEnabled && encoded != nil {
+		errorRateDecimal := errorRate / 100.0
+		corruptedTmp, errors := simulation.AddErrors(encoded, errorRateDecimal, errorType)
+		corrupted = corruptedTmp
+		errorsIntroduced = errors
+	} else if encoded != nil {
+		// If error module is disabled, pass encoded as corrupted (no errors)
+		corrupted = encoded
+		errorsIntroduced = 0
+	} else {
+		corrupted = nil
+		errorsIntroduced = 0
+	}
 
-	decoded := simulation.DecodeWithGold(*corrupted, *goldCode)
-	ber := simulation.CalculateBER(*bitSeq, *decoded)
+	var decoded *simulation.BitSequence
+	if decoderEnabled && corrupted != nil && goldCode != nil {
+		decodedTmp := simulation.DecodeWithGold(*corrupted, *goldCode)
+		decoded = decodedTmp
+	} else {
+		decoded = nil
+	}
 
-	// Calculate autocorrelation analysis
-	originalAutocorr := simulation.MaxAbsoluteOffPeak(simulation.CalculatePeriodicAutocorrelation(*bitSeq))
-	encodedAutocorr := simulation.MaxAbsoluteOffPeak(simulation.CalculatePeriodicAutocorrelation(*encoded))
-	corruptedAutocorr := simulation.MaxAbsoluteOffPeak(simulation.CalculatePeriodicAutocorrelation(*corrupted))
+	var ber float32
+	var errorCount int
+	if berEnabled && decoded != nil {
+		ber = simulation.CalculateBER(*bitSeq, *decoded)
+		// Count errors for display
+		errorCount = 0
+		for i := range bitSeq.Len() {
+			if bitSeq.Get(i) != decoded.Get(i) {
+				errorCount++
+			}
+		}
+	} else {
+		ber = 0
+		errorCount = 0
+	}
 
-	// Count errors for display
-	errorCount := 0
-	for i := range bitSeq.Len() {
-		if bitSeq.Get(i) != decoded.Get(i) {
-			errorCount++
+	var originalAutocorr, encodedAutocorr, corruptedAutocorr float32
+	if autocorrEnabled {
+		originalAutocorr = simulation.MaxAbsoluteOffPeak(simulation.CalculatePeriodicAutocorrelation(*bitSeq))
+		if encoded != nil {
+			encodedAutocorr = simulation.MaxAbsoluteOffPeak(simulation.CalculatePeriodicAutocorrelation(*encoded))
+		}
+		if corrupted != nil {
+			corruptedAutocorr = simulation.MaxAbsoluteOffPeak(simulation.CalculatePeriodicAutocorrelation(*corrupted))
 		}
 	}
+	// --- END NEW ---
 
 	// Store results globally for other handlers to access
 	globalResults.mutex.Lock()
@@ -366,10 +409,14 @@ func EncoderHandler(w http.ResponseWriter, r *http.Request) {
 func ErrorHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("ErrorHandler called")
 
-	// Get stored results from global state
 	globalResults.mutex.RLock()
-
-	// Check if we have stored results
+	if globalResults.Encoded != nil && globalResults.Corrupted == globalResults.Encoded {
+		// Moduł wyłączony
+		globalResults.mutex.RUnlock()
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<div class="module-disabled-message">Moduł dodawania błędów jest wyłączony.</div>`)
+		return
+	}
 	if globalResults.Corrupted == nil {
 		globalResults.mutex.RUnlock()
 		log.Printf("ErrorHandler: No corrupted sequence available")
@@ -405,14 +452,11 @@ func ErrorHandler(w http.ResponseWriter, r *http.Request) {
 func DecoderHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("DecoderHandler called")
 
-	// Get stored results from global state
 	globalResults.mutex.RLock()
-
-	// Check if we have stored results
 	if globalResults.Decoded == nil {
 		globalResults.mutex.RUnlock()
-		log.Printf("DecoderHandler: No decoded sequence available")
-		http.Error(w, "No simulation results available. Please run complete simulation first.", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<div class="module-disabled-message">Moduł dekodera jest wyłączony.</div>`)
 		return
 	}
 
@@ -447,13 +491,21 @@ func DecoderHandler(w http.ResponseWriter, r *http.Request) {
 
 // BERHandler returns stored BER calculation results
 func BERHandler(w http.ResponseWriter, r *http.Request) {
-	// Get stored results from global state
 	globalResults.mutex.RLock()
-
-	// Check if we have stored results
-	if globalResults.Original == nil || globalResults.Decoded == nil {
+	if globalResults.Original == nil {
 		globalResults.mutex.RUnlock()
 		http.Error(w, "No simulation results available. Please run complete simulation first.", http.StatusBadRequest)
+		return
+	}
+	if globalResults.Decoded == nil {
+		globalResults.mutex.RUnlock()
+		w.Header().Set("Content-Type", "text/html")
+		// Sprawdź czy dekoder był wyłączony
+		msg := `<div class="module-disabled-message">Moduł BER jest wyłączony.</div>`
+		if globalResults.Decoded == nil {
+			msg = `<div class="module-disabled-message">Moduł BER wymaga działania modułu dekodera.</div>`
+		}
+		fmt.Fprint(w, msg)
 		return
 	}
 
@@ -502,6 +554,13 @@ func AutocorrelationHandler(w http.ResponseWriter, r *http.Request) {
 		globalResults.mutex.RUnlock()
 		log.Printf("AutocorrelationHandler: No simulation results available")
 		http.Error(w, "No simulation results available. Please run complete simulation first.", http.StatusBadRequest)
+		return
+	}
+	// Sprawdź czy autokorelacja była liczona (wszystkie wartości == 0)
+	if globalResults.OriginalAutocorr == 0 && globalResults.EncodedAutocorr == 0 && globalResults.CorruptedAutocorr == 0 {
+		globalResults.mutex.RUnlock()
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<div class="module-disabled-message">Moduł autokorelacji jest wyłączony.</div>`)
 		return
 	}
 
